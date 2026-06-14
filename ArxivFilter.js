@@ -106,6 +106,7 @@
         { key: "arxiv_id", label: "arXiv ID", default: true },
         { key: "publish_date", label: "Publish Date", default: true },
         { key: "title", label: "Title", default: true },
+        { key: "authors", label: "Authors", default: false },
         { key: "comment_en", label: "LLM Comment", default: true },
         { key: "comment", label: "LLM 评述", default: false },
         { key: "abstract", label: "Abstract", default: false },
