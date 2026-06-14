@@ -65,6 +65,10 @@
     .multiselect-option:hover { background: #f5f5f5; }
     .multiselect-option input { cursor: pointer; margin: 0; }
 
+    /* ===== 新增：检索结果数量统计条样式 ===== */
+    .search-summary { font-size: 14px; color: #666; margin-bottom: 15px; padding-bottom: 8px; border-bottom: 1px solid #eee; font-style: italic; }
+    .search-summary strong { color: #36c; }
+
     /* 论文卡片样式 */
     #result-box{ margin-top: 20px; }
     .paper { border: 1px solid #ddd; border-radius: 6px; padding: 12px; margin-bottom: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
@@ -84,7 +88,7 @@
     .paper-tags-group { margin-top: 6px; font-size: 12px; color: #666; }
     .paper-tags span{ display: inline-block; margin: 2px; padding: 2px 8px; background: #eee; border-radius: 10px; font-size: 12px; color: #555; }
 
-    /* ===== 分页控件样式 ===== */
+    /* 分页控件样式 */
     .pagination-bar { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 25px; padding: 10px 0; }
     .page-btn { padding: 8px 16px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer; font-size: 13px; color: #333; user-select: none; font-weight: bold; }
     .page-btn:hover:not(:disabled) { background: #36c; color: #fff; border-color: #36c; }
@@ -115,17 +119,13 @@
         { key: "source_categories", label: "arXiv Categories", default: false }
     ];
 
-    // 数据池
     const tagsData = { research_tags: [], ml_tags: [], source_categories: [] };
-    // 已选中集合
     const selectedData = { research_tags: new Set(), ml_tags: new Set(), source_categories: new Set() };
-    // 勾选需要显示的字段
     const visibleFields = new Set(DISPLAY_FIELDS.filter(f => f.default).map(f => f.key));
     const countCache = new Map(); 
 
-    // ===== 分页控制状态状态量 =====
     let currentPage = 1; 
-    const pageSize = 100; // 设定每页 100 篇
+    const pageSize = 100; 
     let lastSearchData = null; 
 
     // =========================
@@ -148,7 +148,6 @@
     searchBtn.textContent = "Search Papers";
     actionBar.appendChild(searchBtn);
 
-    // 多选下拉选择框
     const selectWrapper = document.createElement("div");
     selectWrapper.className = "custom-multiselect";
 
@@ -169,14 +168,9 @@
         checkbox.checked = field.default;
         
         checkbox.onchange = () => {
-            if (checkbox.checked) {
-                visibleFields.add(field.key);
-            } else {
-                visibleFields.delete(field.key);
-            }
-            if(lastSearchData) {
-                renderResults(lastSearchData);
-            }
+            if (checkbox.checked) visibleFields.add(field.key);
+            else visibleFields.delete(field.key);
+            if(lastSearchData) renderResults(lastSearchData);
         };
 
         option.appendChild(checkbox);
@@ -205,7 +199,6 @@
     resultBox.id = "result-box";
     app.appendChild(resultBox);
 
-    // ===== 创建底层分页容器 =====
     const paginationBar = document.createElement("div");
     paginationBar.className = "pagination-bar";
     app.appendChild(paginationBar);
@@ -236,94 +229,45 @@
     // =========================
     // 加载全量维度数据
     // =========================
-    // async function loadAllTagsFromCargo() {
-    //     resultBox.innerHTML = "正在初始化加载全量多维度标签数据...";
-        
-    //     const fieldsStr = Object.keys(DIMENSIONS).map(k => DIMENSIONS[k].field).join(",");
-    //     const params = new URLSearchParams({
-    //         action: "cargoquery", tables: "arxiv_papers", fields: fieldsStr, limit: 1000, format: "json"
-    //     });
-    //     const url = mw.util.wikiScript("api") + "?" + params.toString();
+    async function loadAllTagsFromCargo() {
+        resultBox.innerHTML = "Initializing multi-dimensional tags...";
+        const sets = { research_tags: new Set(), ml_tags: new Set(), source_categories: new Set() };
 
-    //     try {
-    //         const res = await fetch(url);
-    //         const data = await res.json();
-    //         const rawRows = data?.cargoquery || [];
-    //         const sets = { research_tags: new Set(), ml_tags: new Set(), source_categories: new Set() };
+        try {
+            for (const key of Object.keys(DIMENSIONS)) {
+                const fieldName = DIMENSIONS[key].field;
+                const params = new URLSearchParams({
+                    action: "cargoquery", tables: "arxiv_papers", fields: fieldName,
+                    lists: fieldName, group_by: fieldName, limit: 500, format: "json"
+                });
 
-    //         rawRows.forEach(row => {
-    //             const item = row.title || {};
-    //             Object.keys(DIMENSIONS).forEach(key => {
-    //                 const fieldName = DIMENSIONS[key].field;
-    //                 const _fieldName = fieldName.replace(/_/g, ' ');
-    //                 const valStr = item[_fieldName] || "";
-    //                 valStr.split(/[,，、]/).forEach(t => {
-    //                     const trimmed = t.trim();
-    //                     if (trimmed) sets[key].add(trimmed);
-    //                 });
-    //             });
-    //         });
+                const url = mw.util.wikiScript("api") + "?" + params.toString();
+                const res = await fetch(url);
+                const data = await res.json();
+                const rawRows = data?.cargoquery || [];
 
-    //         Object.keys(DIMENSIONS).forEach(key => { tagsData[key] = Array.from(sets[key]).sort(); });
-    //         resultBox.innerHTML = "标签数据加载完毕，请在上方选择标签进行文章筛选。";
-    //         renderAllDimensions();
-    //     } catch (e) { resultBox.innerHTML = "从 Cargo 初始化加载标签集失败。"; }
-    // }
-	async function loadAllTagsFromCargo() {
-    	resultBox.innerHTML = "Initializing multi-dimensional tags...";
-    
-    	// 初始化清空
-    	const sets = { research_tags: new Set(), ml_tags: new Set(), source_categories: new Set() };
+                rawRows.forEach(row => {
+                    const item = row.title || {};
+                    const _fieldName = fieldName.replace(/_/g, ' ');
+                    const tagVal = item[_fieldName] || item[fieldName] || "";
+                    const trimmed = tagVal.trim();
+                    if (trimmed) sets[key].add(trimmed);
+                });
+            }
 
-    	try {
-        	// 遍历三个维度，分别精确获取该字段在整个数据库里出现过的所有独立标签值
-        	for (const key of Object.keys(DIMENSIONS)) {
-            	const fieldName = DIMENSIONS[key].field;
+            Object.keys(DIMENSIONS).forEach(key => { 
+                tagsData[key] = Array.from(sets[key]).sort(); 
+            });
 
-            	const params = new URLSearchParams({
-                	action: "cargoquery",
-                	tables: "arxiv_papers",
-                	fields: fieldName,
-                	// ====== 核心优化 1：利用 lists 参数让 Cargo 自动将 List 展开成单条独立记录 ======
-                	lists: fieldName, 
-                	// ====== 核心优化 2：利用 group_by 去重，直接返回唯一的标签名，不拉取冗余文章 ======
-                	group_by: fieldName, 
-                	limit: 500, // 这时的 500 代表“标签种类数”上限，对于一门学科的标签绰绰有余
-                	format: "json"
-            	});
+            resultBox.innerHTML = "Tags initialized successfully. Please select tags above to search papers.";
+            renderAllDimensions();
 
-            	const url = mw.util.wikiScript("api") + "?" + params.toString();
-            	const res = await fetch(url);
-            	const data = await res.json();
-            	const rawRows = data?.cargoquery || [];
+        } catch (e) { 
+            console.error(e);
+            resultBox.innerHTML = "Failed to initialize tag sets."; 
+        }
+    }
 
-            	rawRows.forEach(row => {
-                	const item = row.title || {};
-                	// 兼容空格和下划线转换
-                	const _fieldName = fieldName.replace(/_/g, ' ');
-                	const tagVal = item[_fieldName] || item[fieldName] || "";
-                
-                	// 再次兜底清洗去重
-                	const trimmed = tagVal.trim();
-                	if (trimmed) {
-                    	sets[key].add(trimmed);
-                	}
-            	});
-        	}
-
-        	// 将全局标签池赋值并排序
-        	Object.keys(DIMENSIONS).forEach(key => { 
-            	tagsData[key] = Array.from(sets[key]).sort(); 
-        	});
-
-        	resultBox.innerHTML = "Tags initialized successfully. Please select tags above to search papers.";
-        	renderAllDimensions();
-
-    	} catch (e) { 
-        	console.error(e);
-        	resultBox.innerHTML = "Failed to initialize tag sets."; 
-    	}
-	}
     function renderAllDimensions() {
         filterContainer.innerHTML = "";
         Object.keys(DIMENSIONS).forEach(key => {
@@ -369,12 +313,9 @@
         });
     }
 
-    // =========================
-    // 全局 AND 联合搜索（Cargo 分页支持）
-    // =========================
     async function searchPapers() {
         resultBox.innerHTML = "Searching...";
-        paginationBar.innerHTML = ""; // 检索期间隐藏分页指示器
+        paginationBar.innerHTML = ""; 
 
         const allConditions = [];
         Object.keys(DIMENSIONS).forEach(key => {
@@ -393,19 +334,11 @@
 
         const where = allConditions.join(" AND ");
         const fieldsToFetch = "arxiv_id,title,url,authors,abstract,comment,comment_en,research_tags,ml_tags,category,source_categories,published_date";
-
-        // ===== 核心：根据 currentPage 运算 Cargo 偏移量 =====
         const currentOffset = (currentPage - 1) * pageSize;
 
         const params = new URLSearchParams({
-            action: "cargoquery",
-            tables: "arxiv_papers",
-            fields: fieldsToFetch,
-            where: where,
-            order_by: "published_date DESC",
-            limit: pageSize + 1,   // 获取 101 条，多出的一条用于判断是否拥有下一页
-            offset: currentOffset, // 告诉后端跳过前 N 条记录
-            format: "json"
+            action: "cargoquery", tables: "arxiv_papers", fields: fieldsToFetch, where: where,
+            order_by: "published_date DESC", limit: pageSize + 1, offset: currentOffset, format: "json"
         });
 
         const url = mw.util.wikiScript("api") + "?" + params.toString();
@@ -421,9 +354,9 @@
         }
     }
 
-    // =========================
-    // 渲染论文结果 与 构建分页控件
-    // =========================
+    // ==========================================
+    // 渲染论文结果 与 构建分页控件 (已注入数量统计栏)
+    // ==========================================
     function renderResults(data) {
         resultBox.innerHTML = "";
         paginationBar.innerHTML = "";
@@ -435,12 +368,17 @@
             return;
         }
 
-        // 探测下一页状态：如果返回的数组长度等于 101，说明后续还有记录
         const hasNextPage = papersList.length > pageSize;
         if (hasNextPage) {
-            // 切掉第 101 条试探项，保持当前页面只输出精确的 100 篇
             papersList = papersList.slice(0, pageSize);
         }
+
+        // ===== 核心改动点：动态向结果框注入当前页渲染的文献总数量统计 =====
+        const summaryDiv = document.createElement("div");
+        summaryDiv.className = "search-summary";
+        summaryDiv.innerHTML = `Showing <strong>${papersList.length}</strong> paper${papersList.length > 1 ? 's' : ''} on this page.`;
+        resultBox.appendChild(summaryDiv);
+        // ========================================================
 
         papersList.forEach(row => {
             const p = row.title;
@@ -466,22 +404,18 @@
             
             let htmlContent = "";
 
-            // 1. arXiv ID 与日期 区块
             if (visibleFields.has("arxiv_id") || visibleFields.has("publish_date")) {
                 htmlContent += `<div class="paper-id">`;
                 if (visibleFields.has("arxiv_id")) {
                     htmlContent += `<strong>arXiv ID:</strong> <a href="${p.url || '#'}" target="_blank" style="color: #36c; text-decoration: none;">${arxivId}</a>`;
                 }
-                if (visibleFields.has("arxiv_id") && visibleFields.has("publish_date")) {
-                    htmlContent += ` | `;
-                }
+                if (visibleFields.has("arxiv_id") && visibleFields.has("publish_date")) htmlContent += ` | `;
                 if (visibleFields.has("publish_date")) {
                     htmlContent += `<strong>Published:</strong> ${publishedDate}`;
                 }
                 htmlContent += `</div>`;
             }
 
-            // 2. Title 区块
             if (visibleFields.has("title")) {
                 htmlContent += `
                 <div class="paper-title">
@@ -489,7 +423,6 @@
                 </div>`;
             }
 
-            // 2.5 作者与主分类区块
             if (visibleFields.has("authors") && authorsList) {
                 htmlContent += `<div class="paper-meta-line"><strong>Authors:</strong> ${authorsList}</div>`;
             }
@@ -497,46 +430,27 @@
                 htmlContent += `<div class="paper-meta-line"><strong>Primary Category:</strong> ${primaryCategory}</div>`;
             }
 
-            // 3. 中文 LLM 评述区块
             if (visibleFields.has("comment") && p.comment) {
-                htmlContent += `
-                <div class="paper-intro">
-                    <strong>LLM评述：</strong>${p.comment}
-                </div>`;
+                htmlContent += `<div class="paper-intro"><strong>LLM评述：</strong>${p.comment}</div>`;
             }
             
-            // 4. 英文 LLM 评述
             if (visibleFields.has("comment_en") && commentEn) {
-                htmlContent += `
-                <div class="paper-text-block comment-en-block">
-                    <strong>LLM Comment (EN)：</strong>${commentEn}
-                </div>`;
+                htmlContent += `<div class="paper-text-block comment-en-block"><strong>LLM Comment (EN)：</strong>${commentEn}</div>`;
             }
 
-            // 5. 文章摘要 (Abstract)
             if (visibleFields.has("abstract") && abstractText) {
-                htmlContent += `
-                <div class="paper-text-block abstract-block">
-                    <strong>Abstract：</strong>${abstractText}
-                </div>`;
+                htmlContent += `<div class="paper-text-block abstract-block"><strong>Abstract：</strong>${abstractText}</div>`;
             }
 
-            // 6. 标签组区块
             const showResearch = visibleFields.has("research_tags") && research_tags;
             const showML = visibleFields.has("ml_tags") && ml_tags;
             const showSource = visibleFields.has("source_categories") && source_categories;
 
             if (showResearch || showML || showSource) {
                 htmlContent += `<div class="paper-tags-group">`;
-                if (showResearch) {
-                    htmlContent += `<div><strong>Research Tags:</strong> <span class="paper-tags">${makeSpans(research_tags)}</span></div>`;
-                }
-                if (showML) {
-                    htmlContent += `<div><strong>AI/ML Algorithms:</strong> <span class="paper-tags">${makeSpans(ml_tags)}</span></div>`;
-                }
-                if (showSource) {
-                    htmlContent += `<div><strong>arXiv Categories:</strong> <span class="paper-tags">${makeSpans(source_categories)}</span></div>`;
-                }
+                if (showResearch) htmlContent += `<div><strong>Research Tags:</strong> <span class="paper-tags">${makeSpans(research_tags)}</span></div>`;
+                if (showML) htmlContent += `<div><strong>AI/ML Algorithms:</strong> <span class="paper-tags">${makeSpans(ml_tags)}</span></div>`;
+                if (showSource) htmlContent += `<div><strong>arXiv Categories:</strong> <span class="paper-tags">${makeSpans(source_categories)}</span></div>`;
                 htmlContent += `</div>`;
             }
 
@@ -544,15 +458,14 @@
             resultBox.appendChild(card);
         });
 
-        // ===== 页面渲染完毕后，在底部拼接分页 DOM 按钮 =====
         const prevBtn = document.createElement("button");
         prevBtn.className = "page-btn";
         prevBtn.textContent = "◀ Previous";
-        prevBtn.disabled = (currentPage === 1); // 处于第一页时自动锁定
+        prevBtn.disabled = (currentPage === 1);
         prevBtn.onclick = () => {
             currentPage--;
             searchPapers();
-            window.scrollTo({ top: resultBox.offsetTop - 40, behavior: 'smooth' }); // 翻页后自动向上平滑锚定到结果框
+            window.scrollTo({ top: resultBox.offsetTop - 40, behavior: 'smooth' });
         };
 
         const pageInfo = document.createElement("span");
@@ -562,7 +475,7 @@
         const nextBtn = document.createElement("button");
         nextBtn.className = "page-btn";
         nextBtn.textContent = "Next ▶";
-        nextBtn.disabled = !hasNextPage; // 后端无下一页数据时锁定
+        nextBtn.disabled = !hasNextPage;
         nextBtn.onclick = () => {
             currentPage++;
             searchPapers();
@@ -574,11 +487,8 @@
         paginationBar.appendChild(nextBtn);
     }
 
-    // =========================
-    // 初始化与重置事件
-    // =========================
     searchBtn.onclick = () => {
-        currentPage = 1; // 点击主大搜索时，务必重置回第一页
+        currentPage = 1; 
         searchPapers();
     };
     
