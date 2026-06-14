@@ -21,7 +21,41 @@
     
     /* 维度区块样式 */
     .dimension-block { margin-bottom: 20px; border-bottom: 1px dashed #ccc; padding-bottom: 15px; }
-    .dimension-title { font-size: 15px; font-weight: bold; color: #333; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+    
+    /* 可点击的标题样式 */
+    .dimension-title { 
+        font-size: 15px; 
+        font-weight: bold; 
+        color: #333; 
+        margin-bottom: 8px; 
+        display: flex; 
+        align-items: center; 
+        gap: 8px; 
+    }
+    /* 仅为需要折叠的维度标题添加手势和动效 */
+    .dimension-block.collapsible .dimension-title {
+        cursor: pointer;
+        user-select: none;
+    }
+    .dimension-block.collapsible .dimension-title:hover {
+        color: #36c;
+    }
+
+    /* 状态指示箭头 */
+    .toggle-arrow {
+        font-size: 12px;
+        color: #999;
+        transition: transform 0.2s ease;
+        display: inline-block;
+    }
+    .dimension-block.collapsed .toggle-arrow {
+        transform: rotate(-90deg); /* 折叠时箭头朝左或朝右 */
+    }
+
+    /* 标签容器折叠状态 */
+    .tags-wrapper { transition: max-height 0.2s ease; overflow: hidden; }
+    .dimension-block.collapsed .tags-wrapper { display: none; }
+
     .selected-count { font-size: 12px; color: #36c; background: #e6f0ff; padding: 2px 6px; border-radius: 10px; font-weight: normal; }
 
     /* 标签样式 */
@@ -97,13 +131,20 @@
     `;
     document.head.appendChild(style);
 
-    // =========================
-    // 配置与数据结构
-    // =========================
+    // ==========================================
+    // 配置与数据结构 (修改 source_categories 的折叠属性)
+    // ==========================================
     const DIMENSIONS = {
-        research_tags: { label: "Research Tags", field: "research_tags" },
-        ml_tags: { label: "AI/ML Algorithms", field: "ml_tags" },
-        source_categories: { label: "arXiv Categories", field: "source_categories" }
+        research_tags: { label: "Research Tags", field: "research_tags", collapsible: true, defaultCollapsed: true },
+        ml_tags: { label: "AI/ML Algorithms", field: "ml_tags", collapsible: true, defaultCollapsed: true },
+        source_categories: { label: "arXiv Categories", field: "source_categories", collapsible: true, defaultCollapsed: false }
+    };
+
+    // 用于运行时内存中保存各个维度的实时展开/折叠状态
+    const collapseStates = {
+        research_tags: DIMENSIONS.research_tags.defaultCollapsed,
+        ml_tags: DIMENSIONS.ml_tags.defaultCollapsed,
+        source_categories: DIMENSIONS.source_categories.defaultCollapsed
     };
 
     const DISPLAY_FIELDS = [
@@ -275,15 +316,28 @@
             const list = tagsData[key] || [];
             const selectSet = selectedData[key];
             const fieldName = dimConfig.field;
+            const isCollapsed = collapseStates[key];
 
             const block = document.createElement("div");
             block.className = "dimension-block";
+            if (dimConfig.collapsible) {
+                block.classList.add("collapsible");
+                if (isCollapsed) block.classList.add("collapsed");
+            }
+
+            // 构建标题元素
             const titleEl = document.createElement("div");
             titleEl.className = "dimension-title";
-            titleEl.innerHTML = `${dimConfig.label} ${selectSet.size > 0 ? `<span class="selected-count">${selectSet.size} selected</span>` : ''}`;
+            
+            // 如果允许折叠，前置渲染一个箭头指示器
+            let arrowHtml = dimConfig.collapsible ? `<span class="toggle-arrow">▼</span> ` : "";
+            titleEl.innerHTML = `${arrowHtml}${dimConfig.label} ${selectSet.size > 0 ? `<span class="selected-count">${selectSet.size} selected</span>` : ''}`;
             block.appendChild(titleEl);
 
+            // 标签外部容器包装器
             const tagsWrapper = document.createElement("div");
+            tagsWrapper.className = "tags-wrapper";
+
             if (list.length === 0) {
                 tagsWrapper.innerHTML = `<span style="color:#999; font-size:12px;">No tags available</span>`;
             } else {
@@ -300,7 +354,8 @@
 
                     getTagCount(fieldName, tag).then(count => { badge.textContent = count; });
 
-                    el.onclick = () => {
+                    el.onclick = (e) => {
+                        e.stopPropagation(); // 阻止冒泡，防止点击标签触发区块折叠
                         if (selectSet.has(tag)) selectSet.delete(tag);
                         else selectSet.add(tag);
                         renderAllDimensions(); 
@@ -309,6 +364,15 @@
                 });
             }
             block.appendChild(tagsWrapper);
+
+            // 点击标题切换折叠/展开状态
+            if (dimConfig.collapsible) {
+                titleEl.onclick = () => {
+                    collapseStates[key] = !collapseStates[key]; // 状态取反
+                    renderAllDimensions(); // 重新渲染刷新 DOM 结构
+                };
+            }
+
             filterContainer.appendChild(block);
         });
     }
@@ -373,12 +437,11 @@
             papersList = papersList.slice(0, pageSize);
         }
 
-        // ===== 核心改动点：动态向结果框注入当前页渲染的文献总数量统计 =====
+        // ===== 向结果框注入当前页渲染的文献总数量统计 =====
         const summaryDiv = document.createElement("div");
         summaryDiv.className = "search-summary";
         summaryDiv.innerHTML = `Showing <strong>${papersList.length}</strong> paper${papersList.length > 1 ? 's' : ''} on this page.`;
         resultBox.appendChild(summaryDiv);
-        // ========================================================
 
         papersList.forEach(row => {
             const p = row.title;
@@ -435,7 +498,7 @@
             }
             
             if (visibleFields.has("comment_en") && commentEn) {
-                htmlContent += `<div class="paper-text-block comment-en-block"><strong>LLM Comment (EN)：</strong>${commentEn}</div>`;
+                htmlContent += `<div class="paper-text-block comment-en-block"><strong>LLM Comment：</strong>${commentEn}</div>`;
             }
 
             if (visibleFields.has("abstract") && abstractText) {
