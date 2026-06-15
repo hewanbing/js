@@ -99,9 +99,10 @@
     .multiselect-option:hover { background: #f5f5f5; }
     .multiselect-option input { cursor: pointer; margin: 0; }
 
-    /* ===== 新增：检索结果数量统计条样式 ===== */
+    /* ===== 检索结果数量统计条样式 ===== */
     .search-summary { font-size: 14px; color: #666; margin-bottom: 15px; padding-bottom: 8px; border-bottom: 1px solid #eee; font-style: italic; }
     .search-summary strong { color: #36c; }
+    .total-count-span { color: #27ae60; font-weight: bold; }
 
     /* 论文卡片样式 */
     #result-box{ margin-top: 20px; }
@@ -132,7 +133,7 @@
     document.head.appendChild(style);
 
     // ==========================================
-    // 配置与数据结构 (修改 source_categories 的折叠属性)
+    // 配置与数据结构
     // ==========================================
     const DIMENSIONS = {
         research_tags: { label: "Research Tags", field: "research_tags", collapsible: true, defaultCollapsed: true },
@@ -140,7 +141,6 @@
         source_categories: { label: "arXiv Categories", field: "source_categories", collapsible: true, defaultCollapsed: false }
     };
 
-    // 用于运行时内存中保存各个维度的实时展开/折叠状态
     const collapseStates = {
         research_tags: DIMENSIONS.research_tags.defaultCollapsed,
         ml_tags: DIMENSIONS.ml_tags.defaultCollapsed,
@@ -244,32 +244,61 @@
     paginationBar.className = "pagination-bar";
     app.appendChild(paginationBar);
 
-    // =========================
-    // Cargo COUNT 查询
-    // =========================
+    // ==========================================
+    // Cargo 数量查询
+    // ==========================================
     async function getTagCount(field, tag) {
         const cacheKey = `${field}:${tag}`;
         if (countCache.has(cacheKey)) return countCache.get(cacheKey);
 
         const where = `${field} HOLDS "${tag}"`;
         const params = new URLSearchParams({
-            action: "cargoquery", tables: "arxiv_papers", fields: field, 
-            where: where, format: "json", origin: "*" 
+            action: "cargoquery", 
+            tables: "arxiv_papers", 
+            fields: "COUNT(*)=row_count",
+            where: where, 
+            format: "json", 
+            origin: "*" 
         });
         
         const url = mw.util.wikiScript("api") + "?" + params.toString();
         try {
             const res = await fetch(url);
             const data = await res.json();
-            const count = data?.cargoquery?.length || 0;
+            const count = parseInt(data?.cargoquery?.[0]?.title?.row_count || 0, 10);
             countCache.set(cacheKey, count);
             return count;
         } catch (e) { return 0; }
     }
 
-    // =========================
+    // ==========================================
+    // 新增：异步查询符合当前复合筛选条件的总文章数
+    // ==========================================
+    async function fetchTotalSearchCount(whereClause, targetElement) {
+        const params = new URLSearchParams({
+            action: "cargoquery",
+            tables: "arxiv_papers",
+            fields: "COUNT(*)=total_count",
+            where: whereClause,
+            format: "json",
+            origin: "*"
+        });
+        const url = mw.util.wikiScript("api") + "?" + params.toString();
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            const total = data?.cargoquery?.[0]?.title?.total_count || 0;
+            if (targetElement) {
+                targetElement.innerHTML = ` (Total: <span class="total-count-span">${total}</span> papers found)`;
+            }
+        } catch (e) {
+            console.error("Failed to fetch total count", e);
+        }
+    }
+
+    // ==========================================
     // 加载全量维度数据
-    // =========================
+    // ==========================================
     async function loadAllTagsFromCargo() {
         resultBox.innerHTML = "Initializing multi-dimensional tags...";
         const sets = { research_tags: new Set(), ml_tags: new Set(), source_categories: new Set() };
@@ -278,8 +307,13 @@
             for (const key of Object.keys(DIMENSIONS)) {
                 const fieldName = DIMENSIONS[key].field;
                 const params = new URLSearchParams({
-                    action: "cargoquery", tables: "arxiv_papers", fields: fieldName,
-                    lists: fieldName, group_by: fieldName, limit: 500, format: "json"
+                    action: "cargoquery", 
+                    tables: "arxiv_papers", 
+                    fields: fieldName,
+                    lists: fieldName, 
+                    group_by: fieldName, 
+                    limit: "max", 
+                    format: "json"
                 });
 
                 const url = mw.util.wikiScript("api") + "?" + params.toString();
@@ -325,16 +359,13 @@
                 if (isCollapsed) block.classList.add("collapsed");
             }
 
-            // 构建标题元素
             const titleEl = document.createElement("div");
             titleEl.className = "dimension-title";
             
-            // 如果允许折叠，前置渲染一个箭头指示器
             let arrowHtml = dimConfig.collapsible ? `<span class="toggle-arrow">▼</span> ` : "";
             titleEl.innerHTML = `${arrowHtml}${dimConfig.label} ${selectSet.size > 0 ? `<span class="selected-count">${selectSet.size} selected</span>` : ''}`;
             block.appendChild(titleEl);
 
-            // 标签外部容器包装器
             const tagsWrapper = document.createElement("div");
             tagsWrapper.className = "tags-wrapper";
 
@@ -355,7 +386,7 @@
                     getTagCount(fieldName, tag).then(count => { badge.textContent = count; });
 
                     el.onclick = (e) => {
-                        e.stopPropagation(); // 阻止冒泡，防止点击标签触发区块折叠
+                        e.stopPropagation(); 
                         if (selectSet.has(tag)) selectSet.delete(tag);
                         else selectSet.add(tag);
                         renderAllDimensions(); 
@@ -365,11 +396,10 @@
             }
             block.appendChild(tagsWrapper);
 
-            // 点击标题切换折叠/展开状态
             if (dimConfig.collapsible) {
                 titleEl.onclick = () => {
-                    collapseStates[key] = !collapseStates[key]; // 状态取反
-                    renderAllDimensions(); // 重新渲染刷新 DOM 结构
+                    collapseStates[key] = !collapseStates[key]; 
+                    renderAllDimensions(); 
                 };
             }
 
@@ -412,6 +442,13 @@
             const data = await res.json();
             lastSearchData = data; 
             renderResults(data);
+
+            // ===== 核心改动：在结果框架渲染后，异步挂载并拉取符合当前组合条件的总数 =====
+            const totalCountContainer = document.getElementById("search-total-count");
+            if (totalCountContainer) {
+                fetchTotalSearchCount(where, totalCountContainer);
+            }
+
         } catch (e) {
             console.error(e);
             resultBox.innerHTML = "Search failed.";
@@ -419,7 +456,7 @@
     }
 
     // ==========================================
-    // 渲染论文结果 与 构建分页控件 (已注入数量统计栏)
+    // 渲染论文结果 与 构建分页控件
     // ==========================================
     function renderResults(data) {
         resultBox.innerHTML = "";
@@ -437,10 +474,10 @@
             papersList = papersList.slice(0, pageSize);
         }
 
-        // ===== 向结果框注入当前页渲染的文献总数量统计 =====
+        // ===== 注入当前页统计，并预留一个 ID 容器异步填充总条数 =====
         const summaryDiv = document.createElement("div");
         summaryDiv.className = "search-summary";
-        summaryDiv.innerHTML = `Showing <strong>${papersList.length}</strong> paper${papersList.length > 1 ? 's' : ''} on this page.`;
+        summaryDiv.innerHTML = `Showing <strong>${papersList.length}</strong> paper${papersList.length > 1 ? 's' : ''} on this page.<span id="search-total-count"> (Calculating total...)</span>`;
         resultBox.appendChild(summaryDiv);
 
         papersList.forEach(row => {
