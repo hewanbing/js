@@ -1,134 +1,194 @@
 (function () {
 
     // ===== 获取 MediaWiki 内容容器 =====
-    const root =
-        document.querySelector("#mw-content-text")
-        || document.querySelector("#mw-content");
-
+    const root = document.querySelector("#mw-content-text") || document.querySelector("#mw-content");
     if (!root) return;
     root.innerHTML = "";
+
     // ===== 隐藏 MediaWiki 自带的顶部操作链接 =====
     const headerLinks = document.querySelector("#mw-page-header-links");
-    if (headerLinks) {
-        headerLinks.style.display = "none";
-    }
-    // =========================
-    // STYLE 样式注入
-    // =========================
+    if (headerLinks) { headerLinks.style.display = "none"; }
+
+    // ==========================================
+    // STYLE 样式注入 (全新支持手动拖拽改变宽高度)
+    // ==========================================
     const style = document.createElement("style");
     style.textContent = `
-    #arxiv-app{ font-family: Arial, sans-serif; padding: 10px; }
-    
-    /* 维度区块样式 */
-    .dimension-block { margin-bottom: 20px; border-bottom: 1px dashed #ccc; padding-bottom: 15px; }
-    
-    /* 可点击的标题样式 */
-    .dimension-title { 
-        font-size: 15px; 
-        font-weight: bold; 
-        color: #333; 
-        margin-bottom: 8px; 
+    #arxiv-app { 
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; 
+        padding: 15px; 
         display: flex; 
-        align-items: center; 
-        gap: 8px; 
+        gap: 0px; /* 移除 gap，交给 resizer 统一处理间距 */
+        align-items: start; 
+        background-color: #f8fafc;
+        min-height: calc(100vh - 40px);
+        position: relative;
     }
-    /* 仅为需要折叠的维度标题添加手势和动效 */
-    .dimension-block.collapsible .dimension-title {
-        cursor: pointer;
+    
+    /* 左侧固定侧边栏 */
+    #arxiv-sidebar {
+        width: 320px; /* 初始宽度 */
+        min-width: 260px; /* 限制最小拖拽宽度 */
+        max-width: 550px; /* 限制最大拖拽宽度 */
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 16px;
+        position: sticky;
+        top: 20px; 
+        max-height: calc(100vh - 60px);
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        box-sizing: border-box;
+        flex-shrink: 0;
+    }
+
+    /* 【核心新增】左右分割线拖拽条 */
+    .resizer {
+        width: 14px;
+        cursor: col-resize;
+        align-self: stretch;
+        position: sticky;
+        top: 20px;
+        height: calc(100vh - 60px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
         user-select: none;
     }
-    .dimension-block.collapsible .dimension-title:hover {
-        color: #36c;
+    .resizer::after {
+        content: "";
+        width: 2px;
+        height: 40px;
+        background: #cbd5e1;
+        border-radius: 2px;
+        transition: background 0.15s;
+    }
+    .resizer:hover::after, .resizer.dragging::after {
+        background: #2563eb;
+        width: 4px;
+        height: 60px;
     }
 
-    /* 状态指示箭头 */
-    .toggle-arrow {
-        font-size: 12px;
-        color: #999;
-        transition: transform 0.2s ease;
-        display: inline-block;
-    }
-    .dimension-block.collapsed .toggle-arrow {
-        transform: rotate(-90deg); /* 折叠时箭头朝左或朝右 */
+    /* 右侧滚动主内容区 */
+    #arxiv-main {
+        flex: 1;
+        min-width: 0; 
+        display: flex;
+        flex-direction: column;
     }
 
-    /* 标签容器折叠状态 */
-    .tags-wrapper { transition: max-height 0.2s ease; overflow: hidden; }
-    .dimension-block.collapsed .tags-wrapper { display: none; }
-
-    .selected-count { font-size: 12px; color: #36c; background: #e6f0ff; padding: 2px 6px; border-radius: 10px; font-weight: normal; }
-
-    /* 标签样式 */
-    .cat-tag{ position: relative; display: inline-block; margin: 8px 12px 8px 4px; padding: 5px 10px; border: 1px solid #999; border-radius: 12px; cursor: pointer; user-select: none; transition: 0.2s; font-size: 13px;}
-    .cat-tag:hover{ background: #f5f5f5; }
-    .cat-tag.selected{ background: #36c; color: white; border-color: #36c; }
+    /* 侧边栏置顶的操作区 */
+    .action-bar { border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; display: flex; flex-direction: column; gap: 8px; }
+    #search-btn { width: 100%; padding: 8px 16px; cursor: pointer; background: #2563eb; color: white; border: none; border-radius: 6px; font-weight: bold; font-size: 14px; transition: background 0.15s; }
+    #search-btn:hover { background: #1d4ed8; }
     
-    /* 右上角数量角标样式 */
-    .tag-badge {
-        position: absolute;
-        top: -6px;
-        right: -10px;
-        background: #666;
-        color: #fff;
-        font-size: 10px;
-        padding: 1px 5px;
-        border-radius: 8px;
-        line-height: 1;
-        font-weight: normal;
-        pointer-events: none;
-        transition: 0.2s;
-    }
-    .cat-tag.selected .tag-badge {
-        background: #ff9900;
-        color: #fff;
-    }
+    .bottom-buttons { display: flex; gap: 8px; }
+    #clear-btn { flex: 1; padding: 8px; cursor: pointer; background: #fff; color: #475569; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; }
+    #clear-btn:hover { background: #f8fafc; }
     
-    /* 全局操作区 */
-    .action-bar { margin-top: 15px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    #search-btn{ padding: 10px 20px; cursor: pointer; background: #36c; color: white; border: none; border-radius: 4px; font-weight: bold; }
-    #search-btn:hover { background: #2a52be; }
-    #clear-btn{ padding: 10px 20px; cursor: pointer; background: #fff; color: #666; border: 1px solid #ccc; border-radius: 4px; }
-    #clear-btn:hover { background: #eee; }
-
-    /* 多选下拉框自定义样式 */
-    .custom-multiselect { position: relative; display: inline-block; }
-    .multiselect-select { padding: 10px 15px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font-size: 14px; user-select: none; min-width: 160px;}
-    .multiselect-dropdown { display: none; position: absolute; top: 100%; left: 0; background: #fff; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); z-index: 100; min-width: 180px; margin-top: 4px; padding: 5px 0;}
+    .custom-multiselect { flex: 1; position: relative; }
+    .multiselect-select { padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; color: #475569; text-align: center; user-select: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
+    .multiselect-dropdown { display: none; position: absolute; top: 100%; left: 0; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 110; min-width: 200px; margin-top: 6px; padding: 6px 0; max-height: 250px; overflow-y: auto;}
     .multiselect-dropdown.show { display: block; }
-    .multiselect-option { padding: 8px 12px; display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #333;}
-    .multiselect-option:hover { background: #f5f5f5; }
+    .multiselect-option { padding: 6px 12px; display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #334155;}
+    .multiselect-option:hover { background: #f1f5f9; }
     .multiselect-option input { cursor: pointer; margin: 0; }
 
-    /* ===== 检索结果数量统计条样式 ===== */
-    .search-summary { font-size: 14px; color: #666; margin-bottom: 15px; padding-bottom: 8px; border-bottom: 1px solid #eee; font-style: italic; }
-    .search-summary strong { color: #36c; }
-    .total-count-span { color: #27ae60; font-weight: bold; }
-
-    /* 论文卡片样式 */
-    #result-box{ margin-top: 20px; }
-    .paper { border: 1px solid #ddd; border-radius: 6px; padding: 12px; margin-bottom: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    .paper-id{ color: #666; font-size: 13px; }
-    .paper-title{ font-size: 18px; font-weight: bold; margin-top: 6px; }
-    .paper-title a { color: #36c; text-decoration: none; }
-    .paper-title a:hover { text-decoration: underline; }
-    .paper-intro{ margin-top: 8px; line-height: 1.5; color: #333; background: #f9f9f9; padding: 8px; border-left: 3px solid #36c; }
+    /* 顶部实时已选标签面板区域 */
+    #active-tags-panel { display: none; padding-top: 10px; border-top: 1px dashed #e2e8f0; margin-top: 4px; }
+    #active-tags-panel.has-tags { display: block; }
+    .active-tags-title { font-size: 11px; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.05em; }
+    .active-tags-list { display: flex; flex-wrap: wrap; gap: 4px; max-height: 100px; overflow-y: auto; padding-right: 2px; }
     
-    /* 文本区块基类 */
-    .paper-text-block { margin-top: 8px; line-height: 1.5; font-size: 14px; padding: 8px; border-left: 3px solid #ccc; background: #f9f9f9; }
-    .comment-block { border-left-color: #36c; }
-    .comment-en-block { border-left-color: #6c5ce7; }
-    .abstract-block { border-left-color: #00b894; }
-    
-    /* 卡片内部标签展示 */
-    .paper-tags-group { margin-top: 6px; font-size: 12px; color: #666; }
-    .paper-tags span{ display: inline-block; margin: 2px; padding: 2px 8px; background: #eee; border-radius: 10px; font-size: 12px; color: #555; }
+    .active-tag-item { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 500; line-height: 1.2; user-select: none; }
+    .active-tag-item.research_tags { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+    .active-tag-item.ml_tags { background: #f5f3ff; color: #5b21b6; border: 1px solid #ddd6fe; }
+    .active-tag-item.source_categories { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    .active-tag-remove { font-size: 12px; cursor: pointer; color: inherit; opacity: 0.6; font-weight: bold; }
+    .active-tag-remove:hover { opacity: 1; }
 
-    /* 分页控件样式 */
-    .pagination-bar { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 25px; padding: 10px 0; }
-    .page-btn { padding: 8px 16px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer; font-size: 13px; color: #333; user-select: none; font-weight: bold; }
-    .page-btn:hover:not(:disabled) { background: #36c; color: #fff; border-color: #36c; }
-    .page-btn:disabled { color: #bbb; background: #f5f5f5; cursor: not-allowed; border-color: #ddd; }
-    .page-info { font-size: 14px; color: #444; font-weight: bold; }
+    /* 类别选择触发器面板 */
+    #category-trigger-bar { padding-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+    .trigger-title { font-size: 11px; font-weight: bold; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;}
+    .category-trigger-btn { width: 100%; padding: 10px 12px; font-size: 13px; font-weight: 600; color: #475569; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; text-align: left; cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: all 0.15s; }
+    .category-trigger-btn:hover { background: #f1f5f9; border-color: #cbd5e1; color: #1e293b; }
+    .category-trigger-btn.active { background: #eff6ff; border-color: #bfdbfe; color: #2563eb; }
+    .trigger-badge { font-size: 11px; background: #2563eb; color: #fff; padding: 1px 6px; border-radius: 10px; font-weight: 500; }
+
+    /* 存放展开标签的容器 */
+    #filter-container {
+        flex: 1;
+        overflow: hidden; /* 防止内部溢出干扰外层 */
+        margin-top: 12px;
+        padding: 2px 0;
+    }
+    
+    .dimension-block { display: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; box-shadow: inset 0 1px 2px rgba(0,0,0,0.01); box-sizing: border-box; }
+    .dimension-block.active { display: block; animation: fadeIn 0.2s ease-in-out; }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(-4px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* 【核心修改点】：默认大高度调多，且支持纵向手动拉伸高度 */
+    .tags-wrapper { 
+        display: flex; 
+        flex-wrap: wrap; 
+        gap: 6px; 
+        height: 450px; /* 【修改】默认高度加大，行数调多 */
+        min-height: 120px; 
+        max-height: 700px;
+        overflow-y: auto; 
+        padding-right: 4px;
+        padding-bottom: 8px;
+        resize: vertical; /* 【关键新增】支持用户纵向鼠标拉伸高度 */
+        box-sizing: border-box;
+    }
+    .tags-wrapper::-webkit-scrollbar { width: 4px; }
+    .tags-wrapper::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+
+    /* 大列表标签基础设计 */
+    .cat-tag { position: relative; display: inline-block; padding: 4px 28px 4px 8px; border: 1px solid #cbd5e1; border-radius: 6px; cursor: pointer; user-select: none; transition: all 0.15s ease; font-size: 12px; color: #334155; background: #fff; white-space: nowrap;}
+    .cat-tag:hover { background: #f8fafc; border-color: #94a3b8; }
+    .cat-tag.selected { background: #2563eb; color: white; border-color: #2563eb; font-weight: 500; }
+    .tag-badge { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: #f1f5f9; color: #64748b; font-size: 10px; padding: 1px 4px; border-radius: 4px; line-height: 1; }
+    .cat-tag.selected .tag-badge { background: rgba(255,255,255,0.2); color: #fff; }
+    
+    /* 右侧卡片区域样式 */
+    .top-control-bar { display: flex; justify-content: space-between; align-items: center; background: #fff; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+    .search-summary { font-size: 14px; color: #64748b; margin: 0; display: flex; align-items: center; }
+    .search-summary strong { color: #2563eb; }
+    .total-count-span { color: #16a34a; font-weight: bold; }
+    
+    #result-box { width: 100%; margin: 12px 0; }
+    .paper { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); transition: border-color 0.15s; }
+    .paper:last-child { margin-bottom: 0; }
+    .paper:hover { border-color: #cbd5e1; }
+    .paper-id { color: #64748b; font-size: 12px; margin-bottom: 4px; }
+    .paper-title { font-size: 17px; font-weight: 700; line-height: 1.4; margin-bottom: 8px; }
+    .paper-title a { color: #1e293b; text-decoration: none; }
+    .paper-title a:hover { color: #2563eb; }
+    
+    .paper-meta-line { font-size: 13px; color: #475569; margin-bottom: 6px; }
+    .paper-intro { margin-top: 8px; line-height: 1.5; font-size: 13.5px; color: #1e293b; background: #eff6ff; padding: 10px; border-left: 3px solid #2563eb; border-radius: 0 4px 4px 0; }
+    .paper-text-block { margin-top: 8px; line-height: 1.5; font-size: 13.5px; padding: 10px; border-left: 3px solid #cbd5e1; background: #f8fafc; border-radius: 0 4px 4px 0; }
+    .comment-en-block { border-left-color: #8b5cf6; background: #f5f3ff; color: #4c1d95; }
+    .abstract-block { border-left-color: #10b981; background: #ecfdf5; color: #064e3b; }
+    
+    .paper-tags-group { margin-top: 10px; font-size: 12px; color: #64748b; display: flex; flex-direction: column; gap: 4px; }
+    .paper-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 4px; vertical-align: middle; }
+    .paper-tags span { display: inline-block; padding: 1px 6px; background: #f1f5f9; border-radius: 4px; font-size: 11px; color: #475569; border: 1px solid #e2e8f0; }
+    
+    /* 翻页控制条布局 */
+    .pagination-bar { display: flex; justify-content: center; align-items: center; gap: 8px; }
+    .page-btn { padding: 4px 10px; border: 1px solid #cbd5e1; background: #fff; border-radius: 4px; cursor: pointer; font-size: 12px; color: #334155; font-weight: 600; }
+    .page-btn:hover:not(:disabled) { background: #f8fafc; border-color: #94a3b8; }
+    .page-btn:disabled { color: #cbd5e1; background: #f1f5f9; cursor: not-allowed; border-color: #e2e8f0; }
+    .page-info { font-size: 12px; color: #475569; font-weight: 600; min-width: 60px; text-align: center; }
     `;
     document.head.appendChild(style);
 
@@ -136,16 +196,12 @@
     // 配置与数据结构
     // ==========================================
     const DIMENSIONS = {
-        research_tags: { label: "Research Tags", field: "research_tags", collapsible: true, defaultCollapsed: true },
-        ml_tags: { label: "AI/ML Algorithms", field: "ml_tags", collapsible: true, defaultCollapsed: true },
-        source_categories: { label: "arXiv Categories", field: "source_categories", collapsible: true, defaultCollapsed: false }
+        research_tags: { label: "Research Tags", field: "research_tags" },
+        ml_tags: { label: "AI/ML Algorithms", field: "ml_tags" },
+        source_categories: { label: "arXiv Categories", field: "source_categories" }
     };
 
-    const collapseStates = {
-        research_tags: DIMENSIONS.research_tags.defaultCollapsed,
-        ml_tags: DIMENSIONS.ml_tags.defaultCollapsed,
-        source_categories: DIMENSIONS.source_categories.defaultCollapsed
-    };
+    let activeDimensionKey = null;
 
     const DISPLAY_FIELDS = [
         { key: "arxiv_id", label: "arXiv ID", default: true },
@@ -163,38 +219,80 @@
     const tagsData = { research_tags: [], ml_tags: [], source_categories: [] };
     const selectedData = { research_tags: new Set(), ml_tags: new Set(), source_categories: new Set() };
     const visibleFields = new Set(DISPLAY_FIELDS.filter(f => f.default).map(f => f.key));
-    const countCache = new Map(); 
+    
+    const globalCountRegistry = { research_tags: {}, ml_tags: {}, source_categories: {} };
 
     let currentPage = 1; 
-    const pageSize = 100; 
+    const pageSize = 50; 
     let lastSearchData = null; 
 
-    // =========================
+    // ==========================================
+    // 公共工具：智能切分
+    // ==========================================
+    const splitTagsSmartly = (str) => {
+        if (!str) return [];
+        const results = [];
+        let current = "";
+        let depth = 0;
+
+        for (let i = 0; i < str.length; i++) {
+            const char = str[i];
+            if (char === '(' || char === '[' || char === '{') depth++;
+            if (char === ')' || char === ']' || char === '}') depth--;
+
+            if (depth === 0 && (char === ',' || char === '，' || char === ';' || char === '；' || char === '、')) {
+                if (current.trim()) results.push(current.trim());
+                current = "";
+            } else {
+                current += char;
+            }
+        }
+        if (current.trim()) results.push(current.trim());
+        return results;
+    };
+
+    // ==========================================
     // UI 节点创建
-    // =========================
+    // ==========================================
     const app = document.createElement("div");
     app.id = "arxiv-app";
     root.appendChild(app);
 
-    const filterContainer = document.createElement("div");
-    filterContainer.id = "filter-container";
-    app.appendChild(filterContainer);
+    // 1. 创建左侧悬浮栏
+    const sidebar = document.createElement("aside");
+    sidebar.id = "arxiv-sidebar";
+    app.appendChild(sidebar);
 
+    // 2. 【核心新增】创建可点击拖拽的左右分割线节点
+    const resizer = document.createElement("div");
+    resizer.className = "resizer";
+    app.appendChild(resizer);
+
+    // 3. 创建右侧结果主区
+    const mainContent = document.createElement("main");
+    mainContent.id = "arxiv-main";
+    app.appendChild(mainContent);
+
+    // 顶端核心控制台
     const actionBar = document.createElement("div");
     actionBar.className = "action-bar";
-    app.appendChild(actionBar);
+    sidebar.appendChild(actionBar);
 
     const searchBtn = document.createElement("button");
     searchBtn.id = "search-btn";
     searchBtn.textContent = "Search Papers";
     actionBar.appendChild(searchBtn);
 
+    const bottomButtons = document.createElement("div");
+    bottomButtons.className = "bottom-buttons";
+    actionBar.appendChild(bottomButtons);
+
     const selectWrapper = document.createElement("div");
     selectWrapper.className = "custom-multiselect";
 
     const selectBox = document.createElement("div");
     selectBox.className = "multiselect-select";
-    selectBox.textContent = "Customize Display Fields";
+    selectBox.textContent = "Fields";
     selectWrapper.appendChild(selectBox);
 
     const dropdownMenu = document.createElement("div");
@@ -203,7 +301,6 @@
     DISPLAY_FIELDS.forEach(field => {
         const option = document.createElement("label");
         option.className = "multiselect-option";
-        
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.checked = field.default;
@@ -224,55 +321,247 @@
         e.stopPropagation();
         dropdownMenu.classList.toggle("show");
     };
-    document.addEventListener("click", () => {
-        dropdownMenu.classList.remove("show");
-    });
+    document.addEventListener("click", () => { dropdownMenu.classList.remove("show"); });
     dropdownMenu.onclick = (e) => e.stopPropagation();
 
-    actionBar.appendChild(selectWrapper);
+    bottomButtons.appendChild(selectWrapper);
 
     const clearBtn = document.createElement("button");
     clearBtn.id = "clear-btn";
     clearBtn.textContent = "Reset";
-    actionBar.appendChild(clearBtn);
+    bottomButtons.appendChild(clearBtn);
+
+    // 已选激活标签池
+    const activeTagsPanel = document.createElement("div");
+    activeTagsPanel.id = "active-tags-panel";
+    const activeTagsTitle = document.createElement("div");
+    activeTagsTitle.className = "active-tags-title";
+    activeTagsTitle.textContent = "Active Filters";
+    const activeTagsList = document.createElement("div");
+    activeTagsList.className = "active-tags-list";
+    activeTagsPanel.appendChild(activeTagsTitle);
+    activeTagsPanel.appendChild(activeTagsList);
+    actionBar.appendChild(activeTagsPanel);
+
+    // 类别选择触发器面板
+    const categoryTriggerBar = document.createElement("div");
+    categoryTriggerBar.id = "category-trigger-bar";
+    const triggerLabel = document.createElement("div");
+    triggerLabel.className = "trigger-title";
+    triggerLabel.textContent = "Filter By Categories";
+    categoryTriggerBar.appendChild(triggerLabel);
+    sidebar.appendChild(categoryTriggerBar);
+
+    // 可控显示单个类别的标签总容器
+    const filterContainer = document.createElement("div");
+    filterContainer.id = "filter-container";
+    sidebar.appendChild(filterContainer);
+
+    // 右侧卡片区域结构
+    const topControlBar = document.createElement("div");
+    topControlBar.className = "top-control-bar";
+    topControlBar.style.display = "none";
+    mainContent.appendChild(topControlBar);
+
+    const summaryDiv = document.createElement("div");
+    summaryDiv.className = "search-summary";
+    topControlBar.appendChild(summaryDiv);
+
+    const topPaginationBar = document.createElement("div");
+    topPaginationBar.className = "pagination-bar";
+    topControlBar.appendChild(topPaginationBar);
 
     const resultBox = document.createElement("div");
     resultBox.id = "result-box";
-    app.appendChild(resultBox);
+    mainContent.appendChild(resultBox);
 
-    const paginationBar = document.createElement("div");
-    paginationBar.className = "pagination-bar";
-    app.appendChild(paginationBar);
+    const bottomPaginationBar = document.createElement("div");
+    bottomPaginationBar.className = "pagination-bar";
+    mainContent.appendChild(bottomPaginationBar);
 
     // ==========================================
-    // Cargo 数量查询
+    // 【核心新增代码】：左右分割线手动拖拽调整宽度逻辑
     // ==========================================
-    async function getTagCount(field, tag) {
-        const cacheKey = `${field}:${tag}`;
-        if (countCache.has(cacheKey)) return countCache.get(cacheKey);
-
-        const where = `${field} HOLDS "${tag}"`;
-        const params = new URLSearchParams({
-            action: "cargoquery", 
-            tables: "arxiv_papers", 
-            fields: "COUNT(*)=row_count",
-            where: where, 
-            format: "json", 
-            origin: "*" 
-        });
+    (function initSplitPanelResizable() {
+        let isDragging = false;
         
-        const url = mw.util.wikiScript("api") + "?" + params.toString();
-        try {
-            const res = await fetch(url);
-            const data = await res.json();
-            const count = parseInt(data?.cargoquery?.[0]?.title?.row_count || 0, 10);
-            countCache.set(cacheKey, count);
-            return count;
-        } catch (e) { return 0; }
+        resizer.addEventListener("mousedown", function (e) {
+            e.preventDefault();
+            isDragging = true;
+            resizer.classList.add("dragging");
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+        });
+
+        document.addEventListener("mousemove", function (e) {
+            if (!isDragging) return;
+            
+            // 计算鼠标当前在屏幕中的绝对 X 轴位置，刨去容器左间距
+            const containerLeft = app.getBoundingClientRect().left;
+            let targetWidth = e.clientX - containerLeft - 7; // 减去拖拽条本身的一半宽度以保持居中
+            
+            // 样式限定限制（防止拉的太宽或太窄导致毁灭布局）
+            if (targetWidth < 260) targetWidth = 260;
+            if (targetWidth > 550) targetWidth = 550;
+            
+            sidebar.style.width = targetWidth + "px";
+        });
+
+        document.addEventListener("mouseup", function () {
+            if (isDragging) {
+                isDragging = false;
+                resizer.classList.remove("dragging");
+                document.body.style.cursor = "";
+                document.body.style.userSelect = "";
+            }
+        });
+    })();
+
+    // ==========================================
+    // 联动刷新与核心渲染
+    // ==========================================
+    function refreshActiveTagsPanel() {
+        activeTagsList.innerHTML = "";
+        let totalSelectedCount = 0;
+
+        Object.keys(DIMENSIONS).forEach(dimKey => {
+            const selectSet = selectedData[dimKey];
+            totalSelectedCount += selectSet.size;
+
+            const triggerBtn = categoryTriggerBar.querySelector(`.category-trigger-btn[data-dim="${dimKey}"]`);
+            if (triggerBtn) {
+                const existingBadge = triggerBtn.querySelector(".trigger-badge");
+                if (existingBadge) existingBadge.remove();
+                if (selectSet.size > 0) {
+                    const badge = document.createElement("span");
+                    badge.className = "trigger-badge";
+                    badge.textContent = selectSet.size;
+                    triggerBtn.appendChild(badge);
+                }
+            }
+
+            selectSet.forEach(tag => {
+                const tagBadge = document.createElement("span");
+                tagBadge.className = `active-tag-item ${dimKey}`;
+                tagBadge.textContent = tag;
+
+                const removeCross = document.createElement("span");
+                removeCross.className = "active-tag-remove";
+                removeCross.innerHTML = "&times;";
+                
+                removeCross.onclick = (e) => {
+                    e.stopPropagation();
+                    selectSet.delete(tag);
+                    
+                    const targetBlock = filterContainer.querySelector(`.dimension-block[data-dim="${dimKey}"]`);
+                    if (targetBlock) {
+                        const originalTagEl = targetBlock.querySelector(`.cat-tag[data-tag="${tag.replace(/"/g, '\\"')}"]`);
+                        if (originalTagEl) originalTagEl.classList.remove("selected");
+                    }
+                    
+                    refreshActiveTagsPanel();
+                };
+
+                tagBadge.appendChild(removeCross);
+                activeTagsList.appendChild(tagBadge);
+            });
+        });
+
+        if (totalSelectedCount > 0) {
+            activeTagsPanel.classList.add("has-tags");
+        } else {
+            activeTagsPanel.classList.remove("has-tags");
+        }
+    }
+
+    function renderCategoryTriggersAndPanels() {
+        const existingBtns = categoryTriggerBar.querySelectorAll(".category-trigger-btn");
+        existingBtns.forEach(b => b.remove());
+        filterContainer.innerHTML = "";
+
+        Object.keys(DIMENSIONS).forEach(key => {
+            const dimConfig = DIMENSIONS[key];
+            const list = tagsData[key] || [];
+            const selectSet = selectedData[key];
+
+            const triggerBtn = document.createElement("button");
+            triggerBtn.className = "category-trigger-btn";
+            triggerBtn.dataset.dim = key;
+            triggerBtn.innerHTML = `<span>+ ${dimConfig.label}</span>`;
+            categoryTriggerBar.appendChild(triggerBtn);
+
+            const block = document.createElement("div");
+            block.className = "dimension-block";
+            block.dataset.dim = key;
+
+            const tagsWrapper = document.createElement("div");
+            tagsWrapper.className = "tags-wrapper";
+
+            if (list.length === 0) {
+                tagsWrapper.innerHTML = `<span style="color:#94a3b8; font-size:12px;">No tags available</span>`;
+            } else {
+                const registry = globalCountRegistry[key];
+                list.forEach(tag => {
+                    const el = document.createElement("span");
+                    el.className = `cat-tag${selectSet.has(tag) ? ' selected' : ''}`;
+                    el.textContent = tag;
+                    el.dataset.tag = tag;
+
+                    const badge = document.createElement("span");
+                    badge.className = "tag-badge";
+                    badge.textContent = registry[tag] || 0;
+                    el.appendChild(badge);
+
+                    tagsWrapper.appendChild(el);
+                });
+            }
+            block.appendChild(tagsWrapper);
+            filterContainer.appendChild(block);
+
+            triggerBtn.onclick = () => {
+                const isCurrentlyActive = triggerBtn.classList.contains("active");
+                
+                categoryTriggerBar.querySelectorAll(".category-trigger-btn").forEach(b => b.classList.remove("active"));
+                filterContainer.querySelectorAll(".dimension-block").forEach(d => d.classList.remove("active"));
+
+                if (!isCurrentlyActive) {
+                    triggerBtn.classList.add("active");
+                    block.classList.add("active");
+                    activeDimensionKey = key;
+                } else {
+                    activeDimensionKey = null; 
+                }
+            };
+
+            tagsWrapper.onclick = (e) => {
+                const tagEl = e.target.closest('.cat-tag');
+                if (!tagEl) return;
+                e.stopPropagation();
+
+                const targetTag = tagEl.dataset.tag;
+                if (selectSet.has(targetTag)) {
+                    selectSet.delete(targetTag);
+                    tagEl.classList.remove('selected');
+                } else {
+                    selectSet.add(targetTag);
+                    tagEl.classList.add('selected');
+                }
+                refreshActiveTagsPanel();
+            };
+        });
+
+        if (activeDimensionKey) {
+            const activeBtn = categoryTriggerBar.querySelector(`.category-trigger-btn[data-dim="${activeDimensionKey}"]`);
+            const activeBlock = filterContainer.querySelector(`.dimension-block[data-dim="${activeDimensionKey}"]`);
+            if (activeBtn && activeBlock) {
+                activeBtn.classList.add("active");
+                activeBlock.classList.add("active");
+            }
+        }
     }
 
     // ==========================================
-    // 新增：异步查询符合当前复合筛选条件的总文章数
+    // 后端 Cargo 数据检索与双分页处理
     // ==========================================
     async function fetchTotalSearchCount(whereClause, targetElement) {
         const params = new URLSearchParams({
@@ -291,51 +580,61 @@
             if (targetElement) {
                 targetElement.innerHTML = ` (Total: <span class="total-count-span">${total}</span> papers found)`;
             }
-        } catch (e) {
-            console.error("Failed to fetch total count", e);
-        }
+        } catch (e) { console.error("Failed to fetch total count", e); }
     }
 
-    // ==========================================
-    // 加载全量维度数据
-    // ==========================================
     async function loadAllTagsFromCargo() {
-        resultBox.innerHTML = "Initializing multi-dimensional tags...";
+        resultBox.innerHTML = "<div style='color:#64748b;font-size:14px;'>Initializing multi-dimensional tags & counts...</div>";
+        
         const sets = { research_tags: new Set(), ml_tags: new Set(), source_categories: new Set() };
+        const fieldsToFetch = Object.keys(DIMENSIONS).map(k => DIMENSIONS[k].field).join(',');
 
         try {
-            for (const key of Object.keys(DIMENSIONS)) {
-                const fieldName = DIMENSIONS[key].field;
-                const params = new URLSearchParams({
-                    action: "cargoquery", 
-                    tables: "arxiv_papers", 
-                    fields: fieldName,
-                    lists: fieldName, 
-                    group_by: fieldName, 
-                    limit: "max", 
-                    format: "json"
-                });
+            const params = new URLSearchParams({
+                action: "cargoquery", 
+                tables: "arxiv_papers", 
+                fields: fieldsToFetch,
+                limit: "max", 
+                format: "json"
+            });
 
-                const url = mw.util.wikiScript("api") + "?" + params.toString();
-                const res = await fetch(url);
-                const data = await res.json();
-                const rawRows = data?.cargoquery || [];
+            const url = mw.util.wikiScript("api") + "?" + params.toString();
+            const res = await fetch(url);
+            const data = await res.json();
+            const rawRows = data?.cargoquery || [];
 
-                rawRows.forEach(row => {
-                    const item = row.title || {};
-                    const _fieldName = fieldName.replace(/_/g, ' ');
-                    const tagVal = item[_fieldName] || item[fieldName] || "";
-                    const trimmed = tagVal.trim();
-                    if (trimmed) sets[key].add(trimmed);
+            rawRows.forEach(row => {
+                const item = row.title || {};
+                Object.keys(DIMENSIONS).forEach(key => {
+                    const fieldName = DIMENSIONS[key].field;
+                    const normalizedFieldName = fieldName.replace(/_/g, ' ');
+                    let rawVal = item[normalizedFieldName] || item[fieldName] || "";
+                    
+                    if (rawVal.trim()) {
+                        rawVal = rawVal.replace(/&#124;/g, '|')
+                                       .replace(/&#123;/g, '{')
+                                       .replace(/&#125;/g, '}')
+                                       .replace(/&#91;/g, '[')
+                                       .replace(/&#93;/g, ']');
+
+                        const subTags = splitTagsSmartly(rawVal);
+                        subTags.forEach(sub => {
+                            if (sub) {
+                                const trimmedSub = sub.trim();
+                                sets[key].add(trimmedSub);
+                                globalCountRegistry[key][trimmedSub] = (globalCountRegistry[key][trimmedSub] || 0) + 1;
+                            }
+                        });
+                    }
                 });
-            }
+            });
 
             Object.keys(DIMENSIONS).forEach(key => { 
                 tagsData[key] = Array.from(sets[key]).sort(); 
             });
 
-            resultBox.innerHTML = "Tags initialized successfully. Please select tags above to search papers.";
-            renderAllDimensions();
+            resultBox.innerHTML = "<div style='color:#64748b;font-size:14px;font-style:italic;'>Tags initialized successfully. Please select categories on the left panel to add filter tags.</div>";
+            renderCategoryTriggersAndPanels();
 
         } catch (e) { 
             console.error(e);
@@ -343,86 +642,28 @@
         }
     }
 
-    function renderAllDimensions() {
-        filterContainer.innerHTML = "";
-        Object.keys(DIMENSIONS).forEach(key => {
-            const dimConfig = DIMENSIONS[key];
-            const list = tagsData[key] || [];
-            const selectSet = selectedData[key];
-            const fieldName = dimConfig.field;
-            const isCollapsed = collapseStates[key];
-
-            const block = document.createElement("div");
-            block.className = "dimension-block";
-            if (dimConfig.collapsible) {
-                block.classList.add("collapsible");
-                if (isCollapsed) block.classList.add("collapsed");
-            }
-
-            const titleEl = document.createElement("div");
-            titleEl.className = "dimension-title";
-            
-            let arrowHtml = dimConfig.collapsible ? `<span class="toggle-arrow">▼</span> ` : "";
-            titleEl.innerHTML = `${arrowHtml}${dimConfig.label} ${selectSet.size > 0 ? `<span class="selected-count">${selectSet.size} selected</span>` : ''}`;
-            block.appendChild(titleEl);
-
-            const tagsWrapper = document.createElement("div");
-            tagsWrapper.className = "tags-wrapper";
-
-            if (list.length === 0) {
-                tagsWrapper.innerHTML = `<span style="color:#999; font-size:12px;">No tags available</span>`;
-            } else {
-                list.forEach(tag => {
-                    const el = document.createElement("span");
-                    el.className = "cat-tag";
-                    if (selectSet.has(tag)) el.classList.add("selected");
-                    el.textContent = tag;
-
-                    const badge = document.createElement("span");
-                    badge.className = "tag-badge";
-                    badge.textContent = "...";
-                    el.appendChild(badge);
-
-                    getTagCount(fieldName, tag).then(count => { badge.textContent = count; });
-
-                    el.onclick = (e) => {
-                        e.stopPropagation(); 
-                        if (selectSet.has(tag)) selectSet.delete(tag);
-                        else selectSet.add(tag);
-                        renderAllDimensions(); 
-                    };
-                    tagsWrapper.appendChild(el);
-                });
-            }
-            block.appendChild(tagsWrapper);
-
-            if (dimConfig.collapsible) {
-                titleEl.onclick = () => {
-                    collapseStates[key] = !collapseStates[key]; 
-                    renderAllDimensions(); 
-                };
-            }
-
-            filterContainer.appendChild(block);
-        });
-    }
-
     async function searchPapers() {
-        resultBox.innerHTML = "Searching...";
-        paginationBar.innerHTML = ""; 
+        resultBox.innerHTML = "<div style='color:#64748b;font-size:14px;'>Searching...</div>";
+        topControlBar.style.display = "none";
+        bottomPaginationBar.innerHTML = ""; 
 
         const allConditions = [];
         Object.keys(DIMENSIONS).forEach(key => {
             const fieldName = DIMENSIONS[key].field;
             const selectedSet = selectedData[key];
             if (selectedSet.size > 0) {
-                const subCond = Array.from(selectedSet).map(t => `${fieldName} HOLDS "${t}"`).join(" AND ");
+                const subCond = Array.from(selectedSet).map(t => {
+                    const secureTag = t.replace(/\|/g, '&#124;')
+                                       .replace(/\{/g, '&#123;')
+                                       .replace(/\}/g, '&#125;');
+                    return `${fieldName} HOLDS "${secureTag}"`;
+                }).join(" AND ");
                 allConditions.push(`(${subCond})`);
             }
         });
 
         if (allConditions.length === 0) {
-            resultBox.innerHTML = "Select at least one tag to start searching papers.";
+            resultBox.innerHTML = "<div style='color:#64748b;font-size:14px;font-style:italic;'>Select at least one tag to start searching papers.</div>";
             return;
         }
 
@@ -431,8 +672,14 @@
         const currentOffset = (currentPage - 1) * pageSize;
 
         const params = new URLSearchParams({
-            action: "cargoquery", tables: "arxiv_papers", fields: fieldsToFetch, where: where,
-            order_by: "published_date DESC", limit: pageSize + 1, offset: currentOffset, format: "json"
+            action: "cargoquery", 
+            tables: "arxiv_papers", 
+            fields: fieldsToFetch, 
+            where: where,
+            order_by: "published_date DESC", 
+            limit: String(pageSize + 1), 
+            offset: String(currentOffset), 
+            format: "json"
         });
 
         const url = mw.util.wikiScript("api") + "?" + params.toString();
@@ -443,7 +690,6 @@
             lastSearchData = data; 
             renderResults(data);
 
-            // ===== 核心改动：在结果框架渲染后，异步挂载并拉取符合当前组合条件的总数 =====
             const totalCountContainer = document.getElementById("search-total-count");
             if (totalCountContainer) {
                 fetchTotalSearchCount(where, totalCountContainer);
@@ -455,16 +701,47 @@
         }
     }
 
-    // ==========================================
-    // 渲染论文结果 与 构建分页控件
-    // ==========================================
+    function createPaginationDOM(targetElement, hasNextPage) {
+        targetElement.innerHTML = "";
+
+        const prevBtn = document.createElement("button");
+        prevBtn.className = "page-btn";
+        prevBtn.textContent = "◀ Prev";
+        prevBtn.disabled = (currentPage === 1);
+        prevBtn.onclick = () => {
+            currentPage--;
+            searchPapers();
+            window.scrollTo({ top: topControlBar.offsetTop - 10, behavior: 'smooth' });
+        };
+
+        const pageInfo = document.createElement("span");
+        pageInfo.className = "page-info";
+        pageInfo.textContent = `P. ${currentPage}`;
+
+        const nextBtn = document.createElement("button");
+        nextBtn.className = "page-btn";
+        nextBtn.textContent = "Next ▶";
+        nextBtn.disabled = !hasNextPage;
+        nextBtn.onclick = () => {
+            currentPage++;
+            searchPapers();
+            window.scrollTo({ top: topControlBar.offsetTop - 10, behavior: 'smooth' });
+        };
+
+        targetElement.appendChild(prevBtn);
+        targetElement.appendChild(pageInfo);
+        targetElement.appendChild(nextBtn);
+    }
+
     function renderResults(data) {
         resultBox.innerHTML = "";
-        paginationBar.innerHTML = "";
+        topPaginationBar.innerHTML = "";
+        bottomPaginationBar.innerHTML = "";
         
         let papersList = data?.cargoquery || [];
 
         if (papersList.length === 0) {
+            topControlBar.style.display = "none";
             resultBox.innerHTML = currentPage > 1 ? "No more papers on this page." : "No papers found matching all selected tags.";
             return;
         }
@@ -474,11 +751,11 @@
             papersList = papersList.slice(0, pageSize);
         }
 
-        // ===== 注入当前页统计，并预留一个 ID 容器异步填充总条数 =====
-        const summaryDiv = document.createElement("div");
-        summaryDiv.className = "search-summary";
-        summaryDiv.innerHTML = `Showing <strong>${papersList.length}</strong> paper${papersList.length > 1 ? 's' : ''} on this page.<span id="search-total-count"> (Calculating total...)</span>`;
-        resultBox.appendChild(summaryDiv);
+        topControlBar.style.display = "flex";
+        summaryDiv.innerHTML = `Showing <strong>${papersList.length}</strong> paper${papersList.length > 1 ? 's' : ''} on this page.<span id="search-total-count"> (Calculating...)</span>`;
+        
+        createPaginationDOM(topPaginationBar, hasNextPage);
+        createPaginationDOM(bottomPaginationBar, hasNextPage);
 
         papersList.forEach(row => {
             const p = row.title;
@@ -487,7 +764,10 @@
 
             const makeSpans = (str) => {
                 if(!str) return "";
-                return str.split(/[,，、]/).filter(Boolean).map(t => `<span>${t.trim()}</span>`).join("");
+                let cleanStr = str.replace(/&#124;/g, '|')
+                                  .replace(/&#123;/g, '{')
+                                  .replace(/&#125;/g, '}');
+                return splitTagsSmartly(cleanStr).map(t => `<span>${t}</span>`).join("");
             };
             
             const arxivId = p["arxiv id"] || p["arxiv_id"] || "";
@@ -507,7 +787,7 @@
             if (visibleFields.has("arxiv_id") || visibleFields.has("publish_date")) {
                 htmlContent += `<div class="paper-id">`;
                 if (visibleFields.has("arxiv_id")) {
-                    htmlContent += `<strong>arXiv ID:</strong> <a href="${p.url || '#'}" target="_blank" style="color: #36c; text-decoration: none;">${arxivId}</a>`;
+                    htmlContent += `<strong>arXiv ID:</strong> <a href="${p.url || '#'}" target="_blank" style="color: #2563eb; text-decoration: none;">${arxivId}</a>`;
                 }
                 if (visibleFields.has("arxiv_id") && visibleFields.has("publish_date")) htmlContent += ` | `;
                 if (visibleFields.has("publish_date")) {
@@ -517,9 +797,10 @@
             }
 
             if (visibleFields.has("title")) {
+                let cleanTitle = (p.title || "Untitled").replace(/&#123;/g, '{').replace(/&#125;/g, '}');
                 htmlContent += `
                 <div class="paper-title">
-                    <a href="${visibleFields.has("url") ? (p.url || wikiInternalUrl) : wikiInternalUrl}" target="_blank">${p.title || "Untitled"}</a>
+                    <a href="${visibleFields.has("url") ? (p.url || wikiInternalUrl) : wikiInternalUrl}" target="_blank">${cleanTitle}</a>
                 </div>`;
             }
 
@@ -539,7 +820,8 @@
             }
 
             if (visibleFields.has("abstract") && abstractText) {
-                htmlContent += `<div class="paper-text-block abstract-block"><strong>Abstract：</strong>${abstractText}</div>`;
+                let cleanAbstract = abstractText.replace(/&#123;/g, '{').replace(/&#125;/g, '}');
+                htmlContent += `<div class="paper-text-block abstract-block"><strong>Abstract：</strong>${cleanAbstract}</div>`;
             }
 
             const showResearch = visibleFields.has("research_tags") && research_tags;
@@ -557,34 +839,6 @@
             card.innerHTML = htmlContent;
             resultBox.appendChild(card);
         });
-
-        const prevBtn = document.createElement("button");
-        prevBtn.className = "page-btn";
-        prevBtn.textContent = "◀ Previous";
-        prevBtn.disabled = (currentPage === 1);
-        prevBtn.onclick = () => {
-            currentPage--;
-            searchPapers();
-            window.scrollTo({ top: resultBox.offsetTop - 40, behavior: 'smooth' });
-        };
-
-        const pageInfo = document.createElement("span");
-        pageInfo.className = "page-info";
-        pageInfo.textContent = `Page ${currentPage} `;
-
-        const nextBtn = document.createElement("button");
-        nextBtn.className = "page-btn";
-        nextBtn.textContent = "Next ▶";
-        nextBtn.disabled = !hasNextPage;
-        nextBtn.onclick = () => {
-            currentPage++;
-            searchPapers();
-            window.scrollTo({ top: resultBox.offsetTop - 40, behavior: 'smooth' });
-        };
-
-        paginationBar.appendChild(prevBtn);
-        paginationBar.appendChild(pageInfo);
-        paginationBar.appendChild(nextBtn);
     }
 
     searchBtn.onclick = () => {
@@ -594,9 +848,12 @@
     
     clearBtn.onclick = () => {
         Object.keys(selectedData).forEach(key => selectedData[key].clear());
-        renderAllDimensions();
-        resultBox.innerHTML = "All selected tags cleared.";
-        paginationBar.innerHTML = "";
+        activeDimensionKey = null; 
+        renderCategoryTriggersAndPanels();
+        refreshActiveTagsPanel(); 
+        topControlBar.style.display = "none";
+        resultBox.innerHTML = "<div style='color:#64748b;font-size:14px;font-style:italic;'>All selected tags cleared.</div>";
+        bottomPaginationBar.innerHTML = "";
         lastSearchData = null; 
         currentPage = 1; 
     };
