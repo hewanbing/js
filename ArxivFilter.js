@@ -10,7 +10,7 @@
     if (headerLinks) { headerLinks.style.display = "none"; }
 
     // ==========================================
-    // STYLE 样式注入 (全新支持手动拖拽改变宽高度)
+    // STYLE 样式注入 (支持手动拖拽改变宽高度)
     // ==========================================
     const style = document.createElement("style");
     style.textContent = `
@@ -18,7 +18,7 @@
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; 
         padding: 15px; 
         display: flex; 
-        gap: 0px; /* 移除 gap，交给 resizer 统一处理间距 */
+        gap: 0px; 
         align-items: start; 
         background-color: #f8fafc;
         min-height: calc(100vh - 40px);
@@ -27,9 +27,9 @@
     
     /* 左侧固定侧边栏 */
     #arxiv-sidebar {
-        width: 320px; /* 初始宽度 */
-        min-width: 260px; /* 限制最小拖拽宽度 */
-        max-width: 550px; /* 限制最大拖拽宽度 */
+        width: 320px; 
+        min-width: 260px; 
+        max-width: 550px; 
         background: #fff;
         border: 1px solid #e2e8f0;
         border-radius: 12px;
@@ -44,7 +44,7 @@
         flex-shrink: 0;
     }
 
-    /* 【核心新增】左右分割线拖拽条 */
+    /* 左右分割线拖拽条 */
     .resizer {
         width: 14px;
         cursor: col-resize;
@@ -121,7 +121,7 @@
     /* 存放展开标签的容器 */
     #filter-container {
         flex: 1;
-        overflow: hidden; /* 防止内部溢出干扰外层 */
+        overflow: hidden; 
         margin-top: 12px;
         padding: 2px 0;
     }
@@ -134,29 +134,27 @@
         to { opacity: 1; transform: translateY(0); }
     }
 
-    /* 【核心修改点】：默认大高度调多，且支持纵向手动拉伸高度 */
+    /* 支持用户纵向鼠标拉伸高度 */
     .tags-wrapper { 
         display: flex; 
         flex-wrap: wrap; 
         gap: 6px; 
-        height: 450px; /* 【修改】默认高度加大，行数调多 */
+        height: 450px; 
         min-height: 120px; 
         max-height: 700px;
         overflow-y: auto; 
         padding-right: 4px;
         padding-bottom: 8px;
-        resize: vertical; /* 【关键新增】支持用户纵向鼠标拉伸高度 */
+        resize: vertical; 
         box-sizing: border-box;
     }
     .tags-wrapper::-webkit-scrollbar { width: 4px; }
     .tags-wrapper::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
 
     /* 大列表标签基础设计 */
-    .cat-tag { position: relative; display: inline-block; padding: 4px 28px 4px 8px; border: 1px solid #cbd5e1; border-radius: 6px; cursor: pointer; user-select: none; transition: all 0.15s ease; font-size: 12px; color: #334155; background: #fff; white-space: nowrap;}
+    .cat-tag { position: relative; display: inline-block; padding: 4px 10px; border: 1px solid #cbd5e1; border-radius: 6px; cursor: pointer; user-select: none; transition: all 0.15s ease; font-size: 12px; color: #334155; background: #fff; white-space: nowrap;}
     .cat-tag:hover { background: #f8fafc; border-color: #94a3b8; }
     .cat-tag.selected { background: #2563eb; color: white; border-color: #2563eb; font-weight: 500; }
-    .tag-badge { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: #f1f5f9; color: #64748b; font-size: 10px; padding: 1px 4px; border-radius: 4px; line-height: 1; }
-    .cat-tag.selected .tag-badge { background: rgba(255,255,255,0.2); color: #fff; }
     
     /* 右侧卡片区域样式 */
     .top-control-bar { display: flex; justify-content: space-between; align-items: center; background: #fff; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
@@ -181,7 +179,11 @@
     
     .paper-tags-group { margin-top: 10px; font-size: 12px; color: #64748b; display: flex; flex-direction: column; gap: 4px; }
     .paper-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 4px; vertical-align: middle; }
-    .paper-tags span { display: inline-block; padding: 1px 6px; background: #f1f5f9; border-radius: 4px; font-size: 11px; color: #475569; border: 1px solid #e2e8f0; }
+    
+    /* 【核心修改】令右侧卡片输出的标签也具备手势和高亮交互 */
+    .paper-tags span { display: inline-block; padding: 2px 6px; background: #f1f5f9; border-radius: 4px; font-size: 11px; color: #475569; border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.12s; user-select: none; }
+    .paper-tags span:hover { background: #e2e8f0; border-color: #cbd5e1; color: #1e293b; }
+    .paper-tags span.selected-active { background: #2563eb; color: #fff; border-color: #2563eb; }
     
     /* 翻页控制条布局 */
     .pagination-bar { display: flex; justify-content: center; align-items: center; gap: 8px; }
@@ -219,15 +221,13 @@
     const tagsData = { research_tags: [], ml_tags: [], source_categories: [] };
     const selectedData = { research_tags: new Set(), ml_tags: new Set(), source_categories: new Set() };
     const visibleFields = new Set(DISPLAY_FIELDS.filter(f => f.default).map(f => f.key));
-    
-    const globalCountRegistry = { research_tags: {}, ml_tags: {}, source_categories: {} };
 
     let currentPage = 1; 
     const pageSize = 50; 
     let lastSearchData = null; 
 
     // ==========================================
-    // 公共工具：智能切分
+    // 智能切分工具
     // ==========================================
     const splitTagsSmartly = (str) => {
         if (!str) return [];
@@ -258,22 +258,18 @@
     app.id = "arxiv-app";
     root.appendChild(app);
 
-    // 1. 创建左侧悬浮栏
     const sidebar = document.createElement("aside");
     sidebar.id = "arxiv-sidebar";
     app.appendChild(sidebar);
 
-    // 2. 【核心新增】创建可点击拖拽的左右分割线节点
     const resizer = document.createElement("div");
     resizer.className = "resizer";
     app.appendChild(resizer);
 
-    // 3. 创建右侧结果主区
     const mainContent = document.createElement("main");
     mainContent.id = "arxiv-main";
     app.appendChild(mainContent);
 
-    // 顶端核心控制台
     const actionBar = document.createElement("div");
     actionBar.className = "action-bar";
     sidebar.appendChild(actionBar);
@@ -331,7 +327,6 @@
     clearBtn.textContent = "Reset";
     bottomButtons.appendChild(clearBtn);
 
-    // 已选激活标签池
     const activeTagsPanel = document.createElement("div");
     activeTagsPanel.id = "active-tags-panel";
     const activeTagsTitle = document.createElement("div");
@@ -343,7 +338,6 @@
     activeTagsPanel.appendChild(activeTagsList);
     actionBar.appendChild(activeTagsPanel);
 
-    // 类别选择触发器面板
     const categoryTriggerBar = document.createElement("div");
     categoryTriggerBar.id = "category-trigger-bar";
     const triggerLabel = document.createElement("div");
@@ -352,12 +346,10 @@
     categoryTriggerBar.appendChild(triggerLabel);
     sidebar.appendChild(categoryTriggerBar);
 
-    // 可控显示单个类别的标签总容器
     const filterContainer = document.createElement("div");
     filterContainer.id = "filter-container";
     sidebar.appendChild(filterContainer);
 
-    // 右侧卡片区域结构
     const topControlBar = document.createElement("div");
     topControlBar.className = "top-control-bar";
     topControlBar.style.display = "none";
@@ -380,11 +372,10 @@
     mainContent.appendChild(bottomPaginationBar);
 
     // ==========================================
-    // 【核心新增代码】：左右分割线手动拖拽调整宽度逻辑
+    // 左右分割线拖拽
     // ==========================================
     (function initSplitPanelResizable() {
         let isDragging = false;
-        
         resizer.addEventListener("mousedown", function (e) {
             e.preventDefault();
             isDragging = true;
@@ -392,21 +383,14 @@
             document.body.style.cursor = "col-resize";
             document.body.style.userSelect = "none";
         });
-
         document.addEventListener("mousemove", function (e) {
             if (!isDragging) return;
-            
-            // 计算鼠标当前在屏幕中的绝对 X 轴位置，刨去容器左间距
             const containerLeft = app.getBoundingClientRect().left;
-            let targetWidth = e.clientX - containerLeft - 7; // 减去拖拽条本身的一半宽度以保持居中
-            
-            // 样式限定限制（防止拉的太宽或太窄导致毁灭布局）
+            let targetWidth = e.clientX - containerLeft - 7;
             if (targetWidth < 260) targetWidth = 260;
             if (targetWidth > 550) targetWidth = 550;
-            
             sidebar.style.width = targetWidth + "px";
         });
-
         document.addEventListener("mouseup", function () {
             if (isDragging) {
                 isDragging = false;
@@ -418,7 +402,7 @@
     })();
 
     // ==========================================
-    // 联动刷新与核心渲染
+    // 状态更新与卡片联动高亮
     // ==========================================
     function refreshActiveTagsPanel() {
         activeTagsList.innerHTML = "";
@@ -453,12 +437,14 @@
                     e.stopPropagation();
                     selectSet.delete(tag);
                     
+                    // 同步取消左侧面板的高亮
                     const targetBlock = filterContainer.querySelector(`.dimension-block[data-dim="${dimKey}"]`);
                     if (targetBlock) {
                         const originalTagEl = targetBlock.querySelector(`.cat-tag[data-tag="${tag.replace(/"/g, '\\"')}"]`);
                         if (originalTagEl) originalTagEl.classList.remove("selected");
                     }
-                    
+                    // 同步取消右侧已有结果卡片的高亮
+                    syncRightContentTagsHighlight(dimKey, tag, false);
                     refreshActiveTagsPanel();
                 };
 
@@ -467,11 +453,15 @@
             });
         });
 
-        if (totalSelectedCount > 0) {
-            activeTagsPanel.classList.add("has-tags");
-        } else {
-            activeTagsPanel.classList.remove("has-tags");
-        }
+        activeTagsPanel.classList.toggle("has-tags", totalSelectedCount > 0);
+    }
+
+    // 用于让右侧结果卡片里已选的标签保持实时蓝色高亮
+    function syncRightContentTagsHighlight(dimKey, tag, isSelected) {
+        const matchingSpans = resultBox.querySelectorAll(`.paper-tags[data-dim="${dimKey}"] span[data-raw-tag="${tag.replace(/"/g, '\\"')}"]`);
+        matchingSpans.forEach(span => {
+            span.classList.toggle("selected-active", isSelected);
+        });
     }
 
     function renderCategoryTriggersAndPanels() {
@@ -500,18 +490,11 @@
             if (list.length === 0) {
                 tagsWrapper.innerHTML = `<span style="color:#94a3b8; font-size:12px;">No tags available</span>`;
             } else {
-                const registry = globalCountRegistry[key];
                 list.forEach(tag => {
                     const el = document.createElement("span");
                     el.className = `cat-tag${selectSet.has(tag) ? ' selected' : ''}`;
                     el.textContent = tag;
                     el.dataset.tag = tag;
-
-                    const badge = document.createElement("span");
-                    badge.className = "tag-badge";
-                    badge.textContent = registry[tag] || 0;
-                    el.appendChild(badge);
-
                     tagsWrapper.appendChild(el);
                 });
             }
@@ -520,7 +503,6 @@
 
             triggerBtn.onclick = () => {
                 const isCurrentlyActive = triggerBtn.classList.contains("active");
-                
                 categoryTriggerBar.querySelectorAll(".category-trigger-btn").forEach(b => b.classList.remove("active"));
                 filterContainer.querySelectorAll(".dimension-block").forEach(d => d.classList.remove("active"));
 
@@ -539,13 +521,16 @@
                 e.stopPropagation();
 
                 const targetTag = tagEl.dataset.tag;
-                if (selectSet.has(targetTag)) {
-                    selectSet.delete(targetTag);
-                    tagEl.classList.remove('selected');
-                } else {
+                const willSelect = !selectSet.has(targetTag);
+                
+                if (willSelect) {
                     selectSet.add(targetTag);
                     tagEl.classList.add('selected');
+                } else {
+                    selectSet.delete(targetTag);
+                    tagEl.classList.remove('selected');
                 }
+                syncRightContentTagsHighlight(key, targetTag, willSelect);
                 refreshActiveTagsPanel();
             };
         });
@@ -561,85 +546,56 @@
     }
 
     // ==========================================
-    // 后端 Cargo 数据检索与双分页处理
+    // 方案A：通过底层分表快速加载去重标签
+    // ==========================================
+    async function loadAllTagsFromCargo() {
+        resultBox.innerHTML = "<div style='color:#64748b;font-size:14px;'>Loading filters from backend...</div>";
+        Object.keys(tagsData).forEach(k => tagsData[k] = []);
+        
+        try {
+            const promises = Object.keys(DIMENSIONS).map(async (key) => {
+                const fieldName = DIMENSIONS[key].field;
+                const params = new URLSearchParams({
+                    action: "cargoquery", 
+                    tables: `arxiv_papers__${fieldName}`, 
+                    fields: "_value=tag_name", 
+                    group_by: "_value", 
+                    order_by: "_value ASC",
+                    limit: "max", 
+                    format: "json"
+                });
+
+                const url = mw.util.wikiScript("api") + "?" + params.toString();
+                const res = await fetch(url);
+                const data = await res.json();
+                const rows = data?.cargoquery || [];
+                
+                tagsData[key] = rows.map(r => (r.title?.tag_name || "").trim()).filter(Boolean);
+            });
+
+            await Promise.all(promises);
+            resultBox.innerHTML = "<div style='color:#64748b;font-size:14px;font-style:italic;'>Filters loaded successfully. Choose your tags on the left.</div>";
+            renderCategoryTriggersAndPanels();
+        } catch (e) { 
+            console.error(e);
+            resultBox.innerHTML = "Failed to initialize tag sets securely."; 
+        }
+    }
+
+    // ==========================================
+    // 结果检索与右侧点击事件委托
     // ==========================================
     async function fetchTotalSearchCount(whereClause, targetElement) {
         const params = new URLSearchParams({
-            action: "cargoquery",
-            tables: "arxiv_papers",
-            fields: "COUNT(*)=total_count",
-            where: whereClause,
-            format: "json",
-            origin: "*"
+            action: "cargoquery", tables: "arxiv_papers", fields: "COUNT(*)=total_count", where: whereClause, format: "json", origin: "*"
         });
         const url = mw.util.wikiScript("api") + "?" + params.toString();
         try {
             const res = await fetch(url);
             const data = await res.json();
             const total = data?.cargoquery?.[0]?.title?.total_count || 0;
-            if (targetElement) {
-                targetElement.innerHTML = ` (Total: <span class="total-count-span">${total}</span> papers found)`;
-            }
-        } catch (e) { console.error("Failed to fetch total count", e); }
-    }
-
-    async function loadAllTagsFromCargo() {
-        resultBox.innerHTML = "<div style='color:#64748b;font-size:14px;'>Initializing multi-dimensional tags & counts...</div>";
-        
-        const sets = { research_tags: new Set(), ml_tags: new Set(), source_categories: new Set() };
-        const fieldsToFetch = Object.keys(DIMENSIONS).map(k => DIMENSIONS[k].field).join(',');
-
-        try {
-            const params = new URLSearchParams({
-                action: "cargoquery", 
-                tables: "arxiv_papers", 
-                fields: fieldsToFetch,
-                limit: "max", 
-                format: "json"
-            });
-
-            const url = mw.util.wikiScript("api") + "?" + params.toString();
-            const res = await fetch(url);
-            const data = await res.json();
-            const rawRows = data?.cargoquery || [];
-
-            rawRows.forEach(row => {
-                const item = row.title || {};
-                Object.keys(DIMENSIONS).forEach(key => {
-                    const fieldName = DIMENSIONS[key].field;
-                    const normalizedFieldName = fieldName.replace(/_/g, ' ');
-                    let rawVal = item[normalizedFieldName] || item[fieldName] || "";
-                    
-                    if (rawVal.trim()) {
-                        rawVal = rawVal.replace(/&#124;/g, '|')
-                                       .replace(/&#123;/g, '{')
-                                       .replace(/&#125;/g, '}')
-                                       .replace(/&#91;/g, '[')
-                                       .replace(/&#93;/g, ']');
-
-                        const subTags = splitTagsSmartly(rawVal);
-                        subTags.forEach(sub => {
-                            if (sub) {
-                                const trimmedSub = sub.trim();
-                                sets[key].add(trimmedSub);
-                                globalCountRegistry[key][trimmedSub] = (globalCountRegistry[key][trimmedSub] || 0) + 1;
-                            }
-                        });
-                    }
-                });
-            });
-
-            Object.keys(DIMENSIONS).forEach(key => { 
-                tagsData[key] = Array.from(sets[key]).sort(); 
-            });
-
-            resultBox.innerHTML = "<div style='color:#64748b;font-size:14px;font-style:italic;'>Tags initialized successfully. Please select categories on the left panel to add filter tags.</div>";
-            renderCategoryTriggersAndPanels();
-
-        } catch (e) { 
-            console.error(e);
-            resultBox.innerHTML = "Failed to initialize tag sets."; 
-        }
+            if (targetElement) targetElement.innerHTML = ` (Total: <span class="total-count-span">${total}</span> papers found)`;
+        } catch (e) { console.error(e); }
     }
 
     async function searchPapers() {
@@ -653,9 +609,7 @@
             const selectedSet = selectedData[key];
             if (selectedSet.size > 0) {
                 const subCond = Array.from(selectedSet).map(t => {
-                    const secureTag = t.replace(/\|/g, '&#124;')
-                                       .replace(/\{/g, '&#123;')
-                                       .replace(/\}/g, '&#125;');
+                    const secureTag = t.replace(/\|/g, '&#124;').replace(/\{/g, '&#123;').replace(/\}/g, '&#125;');
                     return `${fieldName} HOLDS "${secureTag}"`;
                 }).join(" AND ");
                 allConditions.push(`(${subCond})`);
@@ -672,29 +626,17 @@
         const currentOffset = (currentPage - 1) * pageSize;
 
         const params = new URLSearchParams({
-            action: "cargoquery", 
-            tables: "arxiv_papers", 
-            fields: fieldsToFetch, 
-            where: where,
-            order_by: "published_date DESC", 
-            limit: String(pageSize + 1), 
-            offset: String(currentOffset), 
-            format: "json"
+            action: "cargoquery", tables: "arxiv_papers", fields: fieldsToFetch, where: where, order_by: "published_date DESC", limit: String(pageSize + 1), offset: String(currentOffset), format: "json"
         });
 
-        const url = mw.util.wikiScript("api") + "?" + params.toString();
-        
         try {
-            const res = await fetch(url);
+            const res = await fetch(mw.util.wikiScript("api") + "?" + params.toString());
             const data = await res.json();
             lastSearchData = data; 
             renderResults(data);
 
             const totalCountContainer = document.getElementById("search-total-count");
-            if (totalCountContainer) {
-                fetchTotalSearchCount(where, totalCountContainer);
-            }
-
+            if (totalCountContainer) fetchTotalSearchCount(where, totalCountContainer);
         } catch (e) {
             console.error(e);
             resultBox.innerHTML = "Search failed.";
@@ -703,34 +645,18 @@
 
     function createPaginationDOM(targetElement, hasNextPage) {
         targetElement.innerHTML = "";
-
         const prevBtn = document.createElement("button");
-        prevBtn.className = "page-btn";
-        prevBtn.textContent = "◀ Prev";
-        prevBtn.disabled = (currentPage === 1);
-        prevBtn.onclick = () => {
-            currentPage--;
-            searchPapers();
-            window.scrollTo({ top: topControlBar.offsetTop - 10, behavior: 'smooth' });
-        };
+        prevBtn.className = "page-btn"; prevBtn.textContent = "◀ Prev"; prevBtn.disabled = (currentPage === 1);
+        prevBtn.onclick = () => { currentPage--; searchPapers(); window.scrollTo({ top: topControlBar.offsetTop - 10, behavior: 'smooth' }); };
 
         const pageInfo = document.createElement("span");
-        pageInfo.className = "page-info";
-        pageInfo.textContent = `P. ${currentPage}`;
+        pageInfo.className = "page-info"; pageInfo.textContent = `P. ${currentPage}`;
 
         const nextBtn = document.createElement("button");
-        nextBtn.className = "page-btn";
-        nextBtn.textContent = "Next ▶";
-        nextBtn.disabled = !hasNextPage;
-        nextBtn.onclick = () => {
-            currentPage++;
-            searchPapers();
-            window.scrollTo({ top: topControlBar.offsetTop - 10, behavior: 'smooth' });
-        };
+        nextBtn.className = "page-btn"; nextBtn.textContent = "Next ▶"; nextBtn.disabled = !hasNextPage;
+        nextBtn.onclick = () => { currentPage++; searchPapers(); window.scrollTo({ top: topControlBar.offsetTop - 10, behavior: 'smooth' }); };
 
-        targetElement.appendChild(prevBtn);
-        targetElement.appendChild(pageInfo);
-        targetElement.appendChild(nextBtn);
+        targetElement.appendChild(prevBtn); targetElement.appendChild(pageInfo); targetElement.appendChild(nextBtn);
     }
 
     function renderResults(data) {
@@ -739,7 +665,6 @@
         bottomPaginationBar.innerHTML = "";
         
         let papersList = data?.cargoquery || [];
-
         if (papersList.length === 0) {
             topControlBar.style.display = "none";
             resultBox.innerHTML = currentPage > 1 ? "No more papers on this page." : "No papers found matching all selected tags.";
@@ -747,9 +672,7 @@
         }
 
         const hasNextPage = papersList.length > pageSize;
-        if (hasNextPage) {
-            papersList = papersList.slice(0, pageSize);
-        }
+        if (hasNextPage) papersList = papersList.slice(0, pageSize);
 
         topControlBar.style.display = "flex";
         summaryDiv.innerHTML = `Showing <strong>${papersList.length}</strong> paper${papersList.length > 1 ? 's' : ''} on this page.<span id="search-total-count"> (Calculating...)</span>`;
@@ -757,17 +680,49 @@
         createPaginationDOM(topPaginationBar, hasNextPage);
         createPaginationDOM(bottomPaginationBar, hasNextPage);
 
+        // 设置点击结果标签时的【右侧事件委托监听】
+        resultBox.onclick = (e) => {
+            const clickedSpan = e.target.closest('.paper-tags span');
+            if (!clickedSpan) return;
+            
+            const parentGroup = clickedSpan.parentElement;
+            const dimKey = parentGroup.dataset.dim;
+            const targetTag = clickedSpan.dataset.rawTag;
+            const selectSet = selectedData[dimKey];
+            
+            if (selectSet.has(targetTag)) {
+                selectSet.delete(targetTag);
+                // 同步更新左侧真实原始 DOM 的样式
+                const leftTagEl = filterContainer.querySelector(`.dimension-block[data-dim="${dimKey}"] .cat-tag[data-tag="${targetTag.replace(/"/g, '\\"')}"]`);
+                if(leftTagEl) leftTagEl.classList.remove('selected');
+            } else {
+                selectSet.add(targetTag);
+                const leftTagEl = filterContainer.querySelector(`.dimension-block[data-dim="${dimKey}"] .cat-tag[data-tag="${targetTag.replace(/"/g, '\\"')}"]`);
+                if(leftTagEl) leftTagEl.classList.add('selected');
+            }
+            
+            // 实时同步当前页面所有相同标签的高亮状态
+            syncRightContentTagsHighlight(dimKey, targetTag, selectSet.has(targetTag));
+            refreshActiveTagsPanel();
+        };
+
         papersList.forEach(row => {
             const p = row.title;
             const card = document.createElement("div");
             card.className = "paper";
 
-            const makeSpans = (str) => {
+            // 改良后的 makeSpans 逻辑，支持生成带维度标志和激活状态的独立 DOM
+            const makeSpansHTML = (dimKey, str) => {
                 if(!str) return "";
-                let cleanStr = str.replace(/&#124;/g, '|')
-                                  .replace(/&#123;/g, '{')
-                                  .replace(/&#125;/g, '}');
-                return splitTagsSmartly(cleanStr).map(t => `<span>${t}</span>`).join("");
+                let cleanStr = str.replace(/&#124;/g, '|').replace(/&#123;/g, '{').replace(/&#125;/g, '}');
+                const subTags = splitTagsSmartly(cleanStr);
+                const selectSet = selectedData[dimKey];
+                
+                return subTags.map(t => {
+                    const trimmed = t.trim();
+                    const isActive = selectSet.has(trimmed) ? " class='selected-active'" : "";
+                    return `<span data-raw-tag="${trimmed.replace(/"/g, '&quot;')}"${isActive}>${trimmed}</span>`;
+                }).join("");
             };
             
             const arxivId = p["arxiv id"] || p["arxiv_id"] || "";
@@ -786,38 +741,21 @@
 
             if (visibleFields.has("arxiv_id") || visibleFields.has("publish_date")) {
                 htmlContent += `<div class="paper-id">`;
-                if (visibleFields.has("arxiv_id")) {
-                    htmlContent += `<strong>arXiv ID:</strong> <a href="${p.url || '#'}" target="_blank" style="color: #2563eb; text-decoration: none;">${arxivId}</a>`;
-                }
+                if (visibleFields.has("arxiv_id")) htmlContent += `<strong>arXiv ID:</strong> <a href="${p.url || '#'}" target="_blank" style="color: #2563eb; text-decoration: none;">${arxivId}</a>`;
                 if (visibleFields.has("arxiv_id") && visibleFields.has("publish_date")) htmlContent += ` | `;
-                if (visibleFields.has("publish_date")) {
-                    htmlContent += `<strong>Published:</strong> ${publishedDate}`;
-                }
+                if (visibleFields.has("publish_date")) htmlContent += `<strong>Published:</strong> ${publishedDate}`;
                 htmlContent += `</div>`;
             }
 
             if (visibleFields.has("title")) {
                 let cleanTitle = (p.title || "Untitled").replace(/&#123;/g, '{').replace(/&#125;/g, '}');
-                htmlContent += `
-                <div class="paper-title">
-                    <a href="${visibleFields.has("url") ? (p.url || wikiInternalUrl) : wikiInternalUrl}" target="_blank">${cleanTitle}</a>
-                </div>`;
+                htmlContent += `<div class="paper-title"><a href="${visibleFields.has("url") ? (p.url || wikiInternalUrl) : wikiInternalUrl}" target="_blank">${cleanTitle}</a></div>`;
             }
 
-            if (visibleFields.has("authors") && authorsList) {
-                htmlContent += `<div class="paper-meta-line"><strong>Authors:</strong> ${authorsList}</div>`;
-            }
-            if (visibleFields.has("category") && primaryCategory) {
-                htmlContent += `<div class="paper-meta-line"><strong>Primary Category:</strong> ${primaryCategory}</div>`;
-            }
-
-            if (visibleFields.has("comment") && p.comment) {
-                htmlContent += `<div class="paper-intro"><strong>LLM评述：</strong>${p.comment}</div>`;
-            }
-            
-            if (visibleFields.has("comment_en") && commentEn) {
-                htmlContent += `<div class="paper-text-block comment-en-block"><strong>LLM Comment：</strong>${commentEn}</div>`;
-            }
+            if (visibleFields.has("authors") && authorsList) htmlContent += `<div class="paper-meta-line"><strong>Authors:</strong> ${authorsList}</div>`;
+            if (visibleFields.has("category") && primaryCategory) htmlContent += `<div class="paper-meta-line"><strong>Primary Category:</strong> ${primaryCategory}</div>`;
+            if (visibleFields.has("comment") && p.comment) htmlContent += `<div class="paper-intro"><strong>LLM评述：</strong>${p.comment}</div>`;
+            if (visibleFields.has("comment_en") && commentEn) htmlContent += `<div class="paper-text-block comment-en-block"><strong>LLM Comment：</strong>${commentEn}</div>`;
 
             if (visibleFields.has("abstract") && abstractText) {
                 let cleanAbstract = abstractText.replace(/&#123;/g, '{').replace(/&#125;/g, '}');
@@ -830,9 +768,10 @@
 
             if (showResearch || showML || showSource) {
                 htmlContent += `<div class="paper-tags-group">`;
-                if (showResearch) htmlContent += `<div><strong>Research Tags:</strong> <span class="paper-tags">${makeSpans(research_tags)}</span></div>`;
-                if (showML) htmlContent += `<div><strong>AI/ML Algorithms:</strong> <span class="paper-tags">${makeSpans(ml_tags)}</span></div>`;
-                if (showSource) htmlContent += `<div><strong>arXiv Categories:</strong> <span class="paper-tags">${makeSpans(source_categories)}</span></div>`;
+                // 给容器赋予 data-dim 用于事件委托识别维度
+                if (showResearch) htmlContent += `<div><strong>Research Tags:</strong> <span class="paper-tags" data-dim="research_tags">${makeSpansHTML("research_tags", research_tags)}</span></div>`;
+                if (showML) htmlContent += `<div><strong>AI/ML Algorithms:</strong> <span class="paper-tags" data-dim="ml_tags">${makeSpansHTML("ml_tags", ml_tags)}</span></div>`;
+                if (showSource) htmlContent += `<div><strong>arXiv Categories:</strong> <span class="paper-tags" data-dim="source_categories">${makeSpansHTML("source_categories", source_categories)}</span></div>`;
                 htmlContent += `</div>`;
             }
 
@@ -841,10 +780,7 @@
         });
     }
 
-    searchBtn.onclick = () => {
-        currentPage = 1; 
-        searchPapers();
-    };
+    searchBtn.onclick = () => { currentPage = 1; searchPapers(); };
     
     clearBtn.onclick = () => {
         Object.keys(selectedData).forEach(key => selectedData[key].clear());
@@ -854,8 +790,7 @@
         topControlBar.style.display = "none";
         resultBox.innerHTML = "<div style='color:#64748b;font-size:14px;font-style:italic;'>All selected tags cleared.</div>";
         bottomPaginationBar.innerHTML = "";
-        lastSearchData = null; 
-        currentPage = 1; 
+        lastSearchData = null; currentPage = 1; 
     };
 
     loadAllTagsFromCargo();
