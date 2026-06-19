@@ -213,9 +213,9 @@
         { key: "comment_en", label: "LLM Comment", default: true },
         { key: "comment", label: "LLM 评述", default: false },
         { key: "abstract", label: "Abstract", default: false },
-        { key: "research_tags", label: "Research Tags", default: false },
-        { key: "ml_tags", label: "AI/ML Algorithms", default: false },
-        { key: "source_categories", label: "arXiv Categories", default: false }
+        { key: "research_tags", label: "Research Tags", default: true },
+        { key: "ml_tags", label: "AI/ML Algorithms", default: true },
+        { key: "source_categories", label: "arXiv Categories", default: true }
     ];
 
     const tagsData = { research_tags: [], ml_tags: [], source_categories: [] };
