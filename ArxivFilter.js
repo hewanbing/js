@@ -180,7 +180,7 @@
     .paper-tags-group { margin-top: 10px; font-size: 12px; color: #64748b; display: flex; flex-direction: column; gap: 4px; }
     .paper-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 4px; vertical-align: middle; }
     
-    /* 【核心修改】令右侧卡片输出的标签也具备手势和高亮交互 */
+    /* 令右侧卡片输出的标签也具备手势和高亮交互 */
     .paper-tags span { display: inline-block; padding: 2px 6px; background: #f1f5f9; border-radius: 4px; font-size: 11px; color: #475569; border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.12s; user-select: none; }
     .paper-tags span:hover { background: #e2e8f0; border-color: #cbd5e1; color: #1e293b; }
     .paper-tags span.selected-active { background: #2563eb; color: #fff; border-color: #2563eb; }
@@ -456,7 +456,6 @@
         activeTagsPanel.classList.toggle("has-tags", totalSelectedCount > 0);
     }
 
-    // 用于让右侧结果卡片里已选的标签保持实时蓝色高亮
     function syncRightContentTagsHighlight(dimKey, tag, isSelected) {
         const matchingSpans = resultBox.querySelectorAll(`.paper-tags[data-dim="${dimKey}"] span[data-raw-tag="${tag.replace(/"/g, '\\"')}"]`);
         matchingSpans.forEach(span => {
@@ -546,7 +545,7 @@
     }
 
     // ==========================================
-    // 方案A：通过底层分表快速加载去重标签
+    // 异步循环增量式抓取全量去重标签流，避免 Max 500 被隐藏后端截断
     // ==========================================
     async function loadAllTagsFromCargo() {
         resultBox.innerHTML = "<div style='color:#64748b;font-size:14px;'>Loading filters from backend...</div>";
@@ -555,22 +554,39 @@
         try {
             const promises = Object.keys(DIMENSIONS).map(async (key) => {
                 const fieldName = DIMENSIONS[key].field;
-                const params = new URLSearchParams({
-                    action: "cargoquery", 
-                    tables: `arxiv_papers__${fieldName}`, 
-                    fields: "_value=tag_name", 
-                    group_by: "_value", 
-                    order_by: "_value ASC",
-                    limit: "max", 
-                    format: "json"
-                });
+                let offset = 0;
+                let keepFetching = true;
+                const accumulatedTags = new Set();
 
-                const url = mw.util.wikiScript("api") + "?" + params.toString();
-                const res = await fetch(url);
-                const data = await res.json();
-                const rows = data?.cargoquery || [];
-                
-                tagsData[key] = rows.map(r => (r.title?.tag_name || "").trim()).filter(Boolean);
+                while (keepFetching) {
+                    const params = new URLSearchParams({
+                        action: "cargoquery", 
+                        tables: `arxiv_papers__${fieldName}`, 
+                        fields: "_value=tag_name", 
+                        group_by: "_value", 
+                        order_by: "_value ASC",
+                        limit: "500", 
+                        offset: String(offset),
+                        format: "json"
+                    });
+
+                    const url = mw.util.wikiScript("api") + "?" + params.toString();
+                    const res = await fetch(url);
+                    const data = await res.json();
+                    const rows = data?.cargoquery || [];
+                    
+                    if (rows.length === 0) {
+                        keepFetching = false;
+                    } else {
+                        rows.forEach(r => {
+                            const val = (r.title?.tag_name || "").trim();
+                            if (val) accumulatedTags.add(val);
+                        });
+                        offset += 500;
+                        if (rows.length < 500) keepFetching = false;
+                    }
+                }
+                tagsData[key] = Array.from(accumulatedTags).sort();
             });
 
             await Promise.all(promises);
@@ -622,6 +638,7 @@
         }
 
         const where = allConditions.join(" AND ");
+        // 【核心修改点】：fields 必须只提供全小写下划线的合法标准字段名称，任何带空格或非法的备用字段会导致整个 API 报 SQL 解析错误
         const fieldsToFetch = "arxiv_id,title,url,authors,abstract,comment,comment_en,research_tags,ml_tags,category,source_categories,published_date";
         const currentOffset = (currentPage - 1) * pageSize;
 
@@ -680,7 +697,6 @@
         createPaginationDOM(topPaginationBar, hasNextPage);
         createPaginationDOM(bottomPaginationBar, hasNextPage);
 
-        // 设置点击结果标签时的【右侧事件委托监听】
         resultBox.onclick = (e) => {
             const clickedSpan = e.target.closest('.paper-tags span');
             if (!clickedSpan) return;
@@ -692,7 +708,6 @@
             
             if (selectSet.has(targetTag)) {
                 selectSet.delete(targetTag);
-                // 同步更新左侧真实原始 DOM 的样式
                 const leftTagEl = filterContainer.querySelector(`.dimension-block[data-dim="${dimKey}"] .cat-tag[data-tag="${targetTag.replace(/"/g, '\\"')}"]`);
                 if(leftTagEl) leftTagEl.classList.remove('selected');
             } else {
@@ -701,17 +716,16 @@
                 if(leftTagEl) leftTagEl.classList.add('selected');
             }
             
-            // 实时同步当前页面所有相同标签的高亮状态
             syncRightContentTagsHighlight(dimKey, targetTag, selectSet.has(targetTag));
             refreshActiveTagsPanel();
         };
 
         papersList.forEach(row => {
             const p = row.title;
+            if (!p) return;
             const card = document.createElement("div");
             card.className = "paper";
 
-            // 改良后的 makeSpans 逻辑，支持生成带维度标志和激活状态的独立 DOM
             const makeSpansHTML = (dimKey, str) => {
                 if(!str) return "";
                 let cleanStr = str.replace(/&#124;/g, '|').replace(/&#123;/g, '{').replace(/&#125;/g, '}');
@@ -725,12 +739,13 @@
                 }).join("");
             };
             
-            const arxivId = p["arxiv id"] || p["arxiv_id"] || "";
-            const publishedDate = p["published date"] || p["published_date"] || "";
-            const research_tags = p["research tags"] || p["research_tags"] || "";
-            const ml_tags = p["ml tags"] || p["ml_tags"] || "";
-            const source_categories = p["source categories"] || p["source_categories"] || "";
-            const commentEn = p["comment en"] || p["comment_en"] || "";
+            // 数据解析读取时的两阶层向下降级处理（智能向旧数据格式空格映射兼容）
+            const arxivId = p["arxiv_id"] || p["arxiv id"] || "";
+            const publishedDate = p["published_date"] || p["published date"] || p["publish_date"] || "";
+            const research_tags = p["research_tags"] || p["research tags"] || "";
+            const ml_tags = p["ml_tags"] || p["ml tags"] || "";
+            const source_categories = p["source_categories"] || p["source categories"] || "";
+            const commentEn = p["comment_en"] || p["comment en"] || "";
             const abstractText = p["abstract"] || "";
             const authorsList = p["authors"] || "";
             const primaryCategory = p["category"] || "";
@@ -749,7 +764,7 @@
 
             if (visibleFields.has("title")) {
                 let cleanTitle = (p.title || "Untitled").replace(/&#123;/g, '{').replace(/&#125;/g, '}');
-                htmlContent += `<div class="paper-title"><a href="${visibleFields.has("url") ? (p.url || wikiInternalUrl) : wikiInternalUrl}" target="_blank">${cleanTitle}</a></div>`;
+                htmlContent += `<div class="paper-title"><a href="${p.url || wikiInternalUrl}" target="_blank">${cleanTitle}</a></div>`;
             }
 
             if (visibleFields.has("authors") && authorsList) htmlContent += `<div class="paper-meta-line"><strong>Authors:</strong> ${authorsList}</div>`;
@@ -768,7 +783,6 @@
 
             if (showResearch || showML || showSource) {
                 htmlContent += `<div class="paper-tags-group">`;
-                // 给容器赋予 data-dim 用于事件委托识别维度
                 if (showResearch) htmlContent += `<div><strong>Research Tags:</strong> <span class="paper-tags" data-dim="research_tags">${makeSpansHTML("research_tags", research_tags)}</span></div>`;
                 if (showML) htmlContent += `<div><strong>AI/ML Algorithms:</strong> <span class="paper-tags" data-dim="ml_tags">${makeSpansHTML("ml_tags", ml_tags)}</span></div>`;
                 if (showSource) htmlContent += `<div><strong>arXiv Categories:</strong> <span class="paper-tags" data-dim="source_categories">${makeSpansHTML("source_categories", source_categories)}</span></div>`;
