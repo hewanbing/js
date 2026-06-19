@@ -5,9 +5,9 @@
     if (!root) return;
     root.innerHTML = "";
 
-    // ===== 隐藏 MediaWiki 自带的顶部操作链接 =====
-    const headerLinks = document.querySelector("#mw-page-header-links");
-    if (headerLinks) { headerLinks.style.display = "none"; }
+    // // ===== 隐藏 MediaWiki 自带的顶部操作链接 =====
+    // const headerLinks = document.querySelector("#mw-page-header-links");
+    // if (headerLinks) { headerLinks.style.display = "none"; }
 
     // ==========================================
     // STYLE 样式注入 (支持手动拖拽改变宽高度)
@@ -638,7 +638,6 @@
         }
 
         const where = allConditions.join(" AND ");
-        // 【核心修改点】：fields 必须只提供全小写下划线的合法标准字段名称，任何带空格或非法的备用字段会导致整个 API 报 SQL 解析错误
         const fieldsToFetch = "arxiv_id,title,url,authors,abstract,comment,comment_en,research_tags,ml_tags,category,source_categories,published_date";
         const currentOffset = (currentPage - 1) * pageSize;
 
@@ -764,7 +763,8 @@
 
             if (visibleFields.has("title")) {
                 let cleanTitle = (p.title || "Untitled").replace(/&#123;/g, '{').replace(/&#125;/g, '}');
-                htmlContent += `<div class="paper-title"><a href="${p.url || wikiInternalUrl}" target="_blank">${cleanTitle}</a></div>`;
+                // 【核心修改点】：此处将 Title 的链接强制固定为内部维基页面链接 (wikiInternalUrl)
+                htmlContent += `<div class="paper-title"><a href="${wikiInternalUrl}" target="_blank">${cleanTitle}</a></div>`;
             }
 
             if (visibleFields.has("authors") && authorsList) htmlContent += `<div class="paper-meta-line"><strong>Authors:</strong> ${authorsList}</div>`;
