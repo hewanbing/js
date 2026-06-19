@@ -1,199 +1,10 @@
+/* MediaWiki:ArxivFilter.js */
 (function () {
 
     // ===== 获取 MediaWiki 内容容器 =====
     const root = document.querySelector("#mw-content-text") || document.querySelector("#mw-content");
     if (!root) return;
-    root.innerHTML = "";
-
-    // // ===== 隐藏 MediaWiki 自带的顶部操作链接 =====
-    // const headerLinks = document.querySelector("#mw-page-header-links");
-    // if (headerLinks) { headerLinks.style.display = "none"; }
-
-    // ==========================================
-    // STYLE 样式注入 (支持手动拖拽改变宽高度)
-    // ==========================================
-    const style = document.createElement("style");
-    style.textContent = `
-    #arxiv-app { 
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; 
-        padding: 15px; 
-        display: flex; 
-        gap: 0px; 
-        align-items: start; 
-        background-color: #f8fafc;
-        min-height: calc(100vh - 40px);
-        position: relative;
-    }
     
-    /* 左侧固定侧边栏 */
-    #arxiv-sidebar {
-        width: 320px; 
-        min-width: 260px; 
-        max-width: 550px; 
-        background: #fff;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 16px;
-        position: sticky;
-        top: 20px; 
-        max-height: calc(100vh - 60px);
-        display: flex;
-        flex-direction: column;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        box-sizing: border-box;
-        flex-shrink: 0;
-    }
-
-    /* 左右分割线拖拽条 */
-    .resizer {
-        width: 14px;
-        cursor: col-resize;
-        align-self: stretch;
-        position: sticky;
-        top: 20px;
-        height: calc(100vh - 60px);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-        user-select: none;
-    }
-    .resizer::after {
-        content: "";
-        width: 2px;
-        height: 40px;
-        background: #cbd5e1;
-        border-radius: 2px;
-        transition: background 0.15s;
-    }
-    .resizer:hover::after, .resizer.dragging::after {
-        background: #2563eb;
-        width: 4px;
-        height: 60px;
-    }
-
-    /* 右侧滚动主内容区 */
-    #arxiv-main {
-        flex: 1;
-        min-width: 0; 
-        display: flex;
-        flex-direction: column;
-    }
-
-    /* 侧边栏置顶的操作区 */
-    .action-bar { border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; display: flex; flex-direction: column; gap: 8px; }
-    #search-btn { width: 100%; padding: 8px 16px; cursor: pointer; background: #2563eb; color: white; border: none; border-radius: 6px; font-weight: bold; font-size: 14px; transition: background 0.15s; }
-    #search-btn:hover { background: #1d4ed8; }
-    
-    .bottom-buttons { display: flex; gap: 8px; }
-    #clear-btn { flex: 1; padding: 8px; cursor: pointer; background: #fff; color: #475569; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; }
-    #clear-btn:hover { background: #f8fafc; }
-    
-    .custom-multiselect { flex: 1; position: relative; }
-    .multiselect-select { padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; color: #475569; text-align: center; user-select: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
-    .multiselect-dropdown { display: none; position: absolute; top: 100%; left: 0; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 110; min-width: 200px; margin-top: 6px; padding: 6px 0; max-height: 250px; overflow-y: auto;}
-    .multiselect-dropdown.show { display: block; }
-    .multiselect-option { padding: 6px 12px; display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #334155;}
-    .multiselect-option:hover { background: #f1f5f9; }
-    .multiselect-option input { cursor: pointer; margin: 0; }
-
-    /* 顶部实时已选标签面板区域 */
-    #active-tags-panel { display: none; padding-top: 10px; border-top: 1px dashed #e2e8f0; margin-top: 4px; }
-    #active-tags-panel.has-tags { display: block; }
-    .active-tags-title { font-size: 11px; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.05em; }
-    .active-tags-list { display: flex; flex-wrap: wrap; gap: 4px; max-height: 100px; overflow-y: auto; padding-right: 2px; }
-    
-    .active-tag-item { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 500; line-height: 1.2; user-select: none; }
-    .active-tag-item.research_tags { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
-    .active-tag-item.ml_tags { background: #f5f3ff; color: #5b21b6; border: 1px solid #ddd6fe; }
-    .active-tag-item.source_categories { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
-    .active-tag-remove { font-size: 12px; cursor: pointer; color: inherit; opacity: 0.6; font-weight: bold; }
-    .active-tag-remove:hover { opacity: 1; }
-
-    /* 类别选择触发器面板 */
-    #category-trigger-bar { padding-top: 14px; display: flex; flex-direction: column; gap: 8px; }
-    .trigger-title { font-size: 11px; font-weight: bold; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;}
-    .category-trigger-btn { width: 100%; padding: 10px 12px; font-size: 13px; font-weight: 600; color: #475569; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; text-align: left; cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: all 0.15s; }
-    .category-trigger-btn:hover { background: #f1f5f9; border-color: #cbd5e1; color: #1e293b; }
-    .category-trigger-btn.active { background: #eff6ff; border-color: #bfdbfe; color: #2563eb; }
-    .trigger-badge { font-size: 11px; background: #2563eb; color: #fff; padding: 1px 6px; border-radius: 10px; font-weight: 500; }
-
-    /* 存放展开标签的容器 */
-    #filter-container {
-        flex: 1;
-        overflow: hidden; 
-        margin-top: 12px;
-        padding: 2px 0;
-    }
-    
-    .dimension-block { display: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; box-shadow: inset 0 1px 2px rgba(0,0,0,0.01); box-sizing: border-box; }
-    .dimension-block.active { display: block; animation: fadeIn 0.2s ease-in-out; }
-    
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(-4px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* 支持用户纵向鼠标拉伸高度 */
-    .tags-wrapper { 
-        display: flex; 
-        flex-wrap: wrap; 
-        gap: 6px; 
-        height: 450px; 
-        min-height: 120px; 
-        max-height: 700px;
-        overflow-y: auto; 
-        padding-right: 4px;
-        padding-bottom: 8px;
-        resize: vertical; 
-        box-sizing: border-box;
-    }
-    .tags-wrapper::-webkit-scrollbar { width: 4px; }
-    .tags-wrapper::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
-
-    /* 大列表标签基础设计 */
-    .cat-tag { position: relative; display: inline-block; padding: 4px 10px; border: 1px solid #cbd5e1; border-radius: 6px; cursor: pointer; user-select: none; transition: all 0.15s ease; font-size: 12px; color: #334155; background: #fff; white-space: nowrap;}
-    .cat-tag:hover { background: #f8fafc; border-color: #94a3b8; }
-    .cat-tag.selected { background: #2563eb; color: white; border-color: #2563eb; font-weight: 500; }
-    
-    /* 右侧卡片区域样式 */
-    .top-control-bar { display: flex; justify-content: space-between; align-items: center; background: #fff; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
-    .search-summary { font-size: 14px; color: #64748b; margin: 0; display: flex; align-items: center; }
-    .search-summary strong { color: #2563eb; }
-    .total-count-span { color: #16a34a; font-weight: bold; }
-    
-    #result-box { width: 100%; margin: 12px 0; }
-    .paper { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); transition: border-color 0.15s; }
-    .paper:last-child { margin-bottom: 0; }
-    .paper:hover { border-color: #cbd5e1; }
-    .paper-id { color: #64748b; font-size: 12px; margin-bottom: 4px; }
-    .paper-title { font-size: 17px; font-weight: 700; line-height: 1.4; margin-bottom: 8px; }
-    .paper-title a { color: #1e293b; text-decoration: none; }
-    .paper-title a:hover { color: #2563eb; }
-    
-    .paper-meta-line { font-size: 13px; color: #475569; margin-bottom: 6px; }
-    .paper-intro { margin-top: 8px; line-height: 1.5; font-size: 13.5px; color: #1e293b; background: #eff6ff; padding: 10px; border-left: 3px solid #2563eb; border-radius: 0 4px 4px 0; }
-    .paper-text-block { margin-top: 8px; line-height: 1.5; font-size: 13.5px; padding: 10px; border-left: 3px solid #cbd5e1; background: #f8fafc; border-radius: 0 4px 4px 0; }
-    .comment-en-block { border-left-color: #8b5cf6; background: #f5f3ff; color: #4c1d95; }
-    .abstract-block { border-left-color: #10b981; background: #ecfdf5; color: #064e3b; }
-    
-    .paper-tags-group { margin-top: 10px; font-size: 12px; color: #64748b; display: flex; flex-direction: column; gap: 4px; }
-    .paper-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 4px; vertical-align: middle; }
-    
-    /* 令右侧卡片输出的标签也具备手势和高亮交互 */
-    .paper-tags span { display: inline-block; padding: 2px 6px; background: #f1f5f9; border-radius: 4px; font-size: 11px; color: #475569; border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.12s; user-select: none; }
-    .paper-tags span:hover { background: #e2e8f0; border-color: #cbd5e1; color: #1e293b; }
-    .paper-tags span.selected-active { background: #2563eb; color: #fff; border-color: #2563eb; }
-    
-    /* 翻页控制条布局 */
-    .pagination-bar { display: flex; justify-content: center; align-items: center; gap: 8px; }
-    .page-btn { padding: 4px 10px; border: 1px solid #cbd5e1; background: #fff; border-radius: 4px; cursor: pointer; font-size: 12px; color: #334155; font-weight: 600; }
-    .page-btn:hover:not(:disabled) { background: #f8fafc; border-color: #94a3b8; }
-    .page-btn:disabled { color: #cbd5e1; background: #f1f5f9; cursor: not-allowed; border-color: #e2e8f0; }
-    .page-info { font-size: 12px; color: #475569; font-weight: 600; min-width: 60px; text-align: center; }
-    `;
-    document.head.appendChild(style);
-
     // ==========================================
     // 配置与数据结构
     // ==========================================
@@ -345,6 +156,27 @@
     triggerLabel.textContent = "Filter By Categories";
     categoryTriggerBar.appendChild(triggerLabel);
     sidebar.appendChild(categoryTriggerBar);
+
+    // ------------------------------------------
+    // 【新增】标签模糊搜索输入框及下拉提示容器
+    // ------------------------------------------
+    const tagSearchWrapper = document.createElement("div");
+    tagSearchWrapper.id = "tag-search-wrapper";
+    tagSearchWrapper.style.cssText = "position: relative; margin-top: 12px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 12px;";
+
+    const tagInput = document.createElement("input");
+    tagInput.type = "text";
+    tagInput.id = "tag-search-input";
+    tagInput.placeholder = "🔍 Search & select tags...";
+    tagInput.style.cssText = "width: 100%; padding: 8px 12px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box;";
+
+    const tagSuggestDropdown = document.createElement("div");
+    tagSuggestDropdown.id = "tag-suggest-dropdown";
+    tagSuggestDropdown.style.cssText = "display: none; position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 120; max-height: 200px; overflow-y: auto; margin-top: 4px;";
+
+    tagSearchWrapper.appendChild(tagInput);
+    tagSearchWrapper.appendChild(tagSuggestDropdown);
+    sidebar.appendChild(tagSearchWrapper);
 
     const filterContainer = document.createElement("div");
     filterContainer.id = "filter-container";
@@ -544,8 +376,82 @@
         }
     }
 
+    // ------------------------------------------
+    // 【新增】本地标签模糊搜索事件监听核心逻辑
+    // ------------------------------------------
+    tagInput.addEventListener("input", function () {
+        const query = tagInput.value.trim().toLowerCase();
+        tagSuggestDropdown.innerHTML = "";
+
+        if (!query) {
+            tagSuggestDropdown.style.display = "none";
+            return;
+        }
+
+        const matches = [];
+        Object.keys(DIMENSIONS).forEach(dimKey => {
+            const list = tagsData[dimKey] || [];
+            list.forEach(tag => {
+                if (tag.toLowerCase().includes(query)) {
+                    matches.push({ tag: tag, dimKey: dimKey });
+                }
+            });
+        });
+
+        if (matches.length === 0) {
+            tagSuggestDropdown.innerHTML = `<div style="padding: 8px 12px; font-size: 12px; color: #94a3b8; font-style: italic;">No matching tags</div>`;
+            tagSuggestDropdown.style.display = "block";
+            return;
+        }
+
+        matches.slice(0, 15).forEach(item => {
+            const itemEl = document.createElement("div");
+            
+            let badgeColor = "#f1f5f9";
+            if (item.dimKey === 'research_tags') badgeColor = "#eff6ff";
+            if (item.dimKey === 'ml_tags') badgeColor = "#f5f3ff";
+            if (item.dimKey === 'source_categories') badgeColor = "#ecfdf5";
+
+            itemEl.style.cssText = `padding: 8px 12px; font-size: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; transition: background 0.1s;`;
+            itemEl.innerHTML = `
+                <span style="color:#334155; font-weight:500;">${item.tag}</span>
+                <span style="font-size:10px; background:${badgeColor}; padding:2px 6px; border-radius:4px; color:#64748b;">${DIMENSIONS[item.dimKey].label}</span>
+            `;
+
+            itemEl.onmouseenter = () => itemEl.style.background = "#f8fafc";
+            itemEl.onmouseleave = () => itemEl.style.background = "transparent";
+
+            itemEl.onclick = (e) => {
+                e.stopPropagation();
+                const selectSet = selectedData[item.dimKey];
+                
+                if (!selectSet.has(item.tag)) {
+                    selectSet.add(item.tag);
+                    const leftTagEl = filterContainer.querySelector(`.dimension-block[data-dim="${item.dimKey}"] .cat-tag[data-tag="${item.tag.replace(/"/g, '\\"')}"]`);
+                    if (leftTagEl) leftTagEl.classList.add('selected');
+                    
+                    syncRightContentTagsHighlight(item.dimKey, item.tag, true);
+                    refreshActiveTagsPanel();
+                }
+
+                tagInput.value = "";
+                tagSuggestDropdown.style.display = "none";
+            };
+
+            tagSuggestDropdown.appendChild(itemEl);
+        });
+
+        tagSuggestDropdown.style.display = "block";
+    });
+
+    document.addEventListener("click", (e) => {
+        if (!tagSearchWrapper.contains(e.target)) {
+            tagSuggestDropdown.style.display = "none";
+        }
+    });
+
     // ==========================================
-    // 异步循环增量式抓取全量去重标签流，避免 Max 500 被隐藏后端截断
+    // 异步循环增量式抓取全量去重标签流
     // ==========================================
     async function loadAllTagsFromCargo() {
         resultBox.innerHTML = "<div style='color:#64748b;font-size:14px;'>Loading filters from backend...</div>";
@@ -738,7 +644,6 @@
                 }).join("");
             };
             
-            // 数据解析读取时的两阶层向下降级处理（智能向旧数据格式空格映射兼容）
             const arxivId = p["arxiv_id"] || p["arxiv id"] || "";
             const publishedDate = p["published_date"] || p["published date"] || p["publish_date"] || "";
             const research_tags = p["research_tags"] || p["research tags"] || "";
@@ -763,7 +668,6 @@
 
             if (visibleFields.has("title")) {
                 let cleanTitle = (p.title || "Untitled").replace(/&#123;/g, '{').replace(/&#125;/g, '}');
-                // 【核心修改点】：此处将 Title 的链接强制固定为内部维基页面链接 (wikiInternalUrl)
                 htmlContent += `<div class="paper-title"><a href="${wikiInternalUrl}" target="_blank">${cleanTitle}</a></div>`;
             }
 
@@ -784,7 +688,7 @@
             if (showResearch || showML || showSource) {
                 htmlContent += `<div class="paper-tags-group">`;
                 if (showResearch) htmlContent += `<div><strong>Research Tags:</strong> <span class="paper-tags" data-dim="research_tags">${makeSpansHTML("research_tags", research_tags)}</span></div>`;
-                if (showML) htmlContent += `<div><strong>AI/ML Algorithms:</strong> <span class="paper-tags" data-dim="ml_tags">${makeSpansHTML("ml_tags", ml_tags)}</span></div>`;
+                if (showML) htmlContent += `<div>export <strong>AI/ML Algorithms:</strong> <span class="paper-tags" data-dim="ml_tags">${makeSpansHTML("ml_tags", ml_tags)}</span></div>`;
                 if (showSource) htmlContent += `<div><strong>arXiv Categories:</strong> <span class="paper-tags" data-dim="source_categories">${makeSpansHTML("source_categories", source_categories)}</span></div>`;
                 htmlContent += `</div>`;
             }
