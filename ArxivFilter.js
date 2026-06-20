@@ -158,7 +158,7 @@
     sidebar.appendChild(categoryTriggerBar);
 
     // ------------------------------------------
-    // 【新增】标签模糊搜索输入框及下拉提示容器
+    // 标签模糊搜索输入框及下拉提示容器
     // ------------------------------------------
     const tagSearchWrapper = document.createElement("div");
     tagSearchWrapper.id = "tag-search-wrapper";
@@ -377,7 +377,7 @@
     }
 
     // ------------------------------------------
-    // 【新增】本地标签模糊搜索事件监听核心逻辑
+    // 本地标签模糊搜索事件监听核心逻辑 (取消截断版)
     // ------------------------------------------
     tagInput.addEventListener("input", function () {
         const query = tagInput.value.trim().toLowerCase();
@@ -404,7 +404,8 @@
             return;
         }
 
-        matches.slice(0, 15).forEach(item => {
+        // ====== 遍历全部匹配标签，配合容器的 css 实现区域内无限滚动查询 ======
+        matches.forEach(item => {
             const itemEl = document.createElement("div");
             
             let badgeColor = "#f1f5f9";
@@ -454,7 +455,7 @@
     // 异步循环增量式抓取全量去重标签流
     // ==========================================
     async function loadAllTagsFromCargo() {
-        resultBox.innerHTML = "<div style='color:#64748b;font-size:14px;'>Loading filters from backend...</div>";
+        resultBox.innerHTML = "<div style='left:#64748b;font-size:14px;'>Loading filters from backend...</div>";
         Object.keys(tagsData).forEach(k => tagsData[k] = []);
         
         try {
@@ -581,6 +582,9 @@
         targetElement.appendChild(prevBtn); targetElement.appendChild(pageInfo); targetElement.appendChild(nextBtn);
     }
 
+    // ==========================================
+    // 渲染查询结果
+    // ==========================================
     function renderResults(data) {
         resultBox.innerHTML = "";
         topPaginationBar.innerHTML = "";
@@ -688,7 +692,7 @@
             if (showResearch || showML || showSource) {
                 htmlContent += `<div class="paper-tags-group">`;
                 if (showResearch) htmlContent += `<div><strong>Research Tags:</strong> <span class="paper-tags" data-dim="research_tags">${makeSpansHTML("research_tags", research_tags)}</span></div>`;
-                if (showML) htmlContent += `<div>export <strong>AI/ML Algorithms:</strong> <span class="paper-tags" data-dim="ml_tags">${makeSpansHTML("ml_tags", ml_tags)}</span></div>`;
+                if (showML) htmlContent += `<div><strong>AI/ML Algorithms:</strong> <span class="paper-tags" data-dim="ml_tags">${makeSpansHTML("ml_tags", ml_tags)}</span></div>`;
                 if (showSource) htmlContent += `<div><strong>arXiv Categories:</strong> <span class="paper-tags" data-dim="source_categories">${makeSpansHTML("source_categories", source_categories)}</span></div>`;
                 htmlContent += `</div>`;
             }
