@@ -9,7 +9,7 @@
     background-color: #f8fafc;
     min-height: calc(100vh - 40px);
     position: relative;
-    /* 【优化】确保在超小屏幕下整体布局能自适应或支持横向滚动，不卡死 */
+    /* 确保在超小屏幕下整体布局能自适应或支持横向滚动，不卡死 */
     max-width: 100%;
     box-sizing: border-box;
 }
@@ -18,7 +18,7 @@
 #arxiv-sidebar {
     width: 320px; 
     min-width: 260px; 
-    max-width: 550px; 
+max-width: 550px; 
     background: #fff;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
@@ -31,8 +31,8 @@
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     box-sizing: border-box;
     flex-shrink: 0;
-    /* 【优化】防止小窗口下内容溢出侧边栏边界 */
-    overflow: hidden; 
+    /* 【核心修复】改为 visible，允许搜索提示框安全向外弹出，不被侧边栏边界截断 */
+    overflow: visible; 
 }
 
 /* 左右分割线拖拽条 */
@@ -112,12 +112,14 @@
 /* 存放展开标签的容器 */
 #filter-container {
     flex: 1;
-    /* 【核心修复点】从小窗口安全考虑改回 hidden，防止容器被内部拉伸强行顶破 */
     overflow: hidden; 
     margin-top: 12px;
     padding: 2px 0;
     width: 100%;
     box-sizing: border-box;
+    /* 【核心修复】赋予相对定位并降低层级，确保上方绝对定位的搜索提示框能盖在它上面 */
+    position: relative;
+    z-index: 1;
 }
 
 /* 维度区块 */
@@ -129,7 +131,6 @@
     padding: 12px; 
     box-shadow: inset 0 1px 2px rgba(0,0,0,0.01); 
     box-sizing: border-box; 
-    /* 【核心修复点】使用 flex 列布局动态约束高度 */
     max-width: 100%;
 }
 .dimension-block.active { display: block; animation: fadeIn 0.2s ease-in-out; }
@@ -144,18 +145,17 @@
     display: flex; 
     flex-wrap: wrap; 
     gap: 6px; 
-    height: 380px;       
+    height: 380px;      
     min-height: 150px;   
-    max-height: 500px;   /* 【核心修复点】降低最大高度限制，防止在笔记本小屏幕上超出浏览器可视区 */
+    max-height: 500px;   
     overflow-y: auto;    
     overflow-x: hidden;  
     
     padding-right: 8px;
-    padding-bottom: 32px; /* 给底部滑动和拉伸手势留出绝对充裕的空白缓冲区 */
+    padding-bottom: 32px; 
     
     resize: vertical;    
     box-sizing: border-box;
-    /* 【核心修复点】强行约束宽度为 100%，跟随父级缩放 */
     width: 100% !important; 
     max-width: 100%;
 }
@@ -182,7 +182,6 @@
     font-size: 12px; 
     color: #334155; 
     background: #fff; 
-    /* 【核心修复点】改 normal 允许当侧边栏被无限缩小时，单个过长的 tag 内部能自动折行，不顶爆边框 */
     white-space: normal; 
     word-break: break-word;
     max-width: 100%;
